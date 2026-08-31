@@ -10,7 +10,7 @@ from app.schemas import CourseCreate, CourseOut, ScheduleIn
 router = APIRouter(prefix="/api/courses", tags=["courses"])
 
 def serialize(course: Course) -> CourseOut:
-    return CourseOut(id=course.id, code=course.code, name=course.name, description=course.description, teacher_id=course.teacher_id, teacher_name=course.teacher.name, enrolled_count=len(course.enrollments), schedules=[ScheduleIn.model_validate(s, from_attributes=True) for s in course.schedules])
+    return CourseOut(id=course.id, code=course.code, name=course.name, description=course.description, teacher_id=course.teacher_id, academic_year_start=course.academic_year_start, semester=course.semester, timezone=course.timezone, teacher_name=course.teacher.name, enrolled_count=len(course.enrollments), schedules=[ScheduleIn.model_validate(s, from_attributes=True) for s in course.schedules])
 
 @router.get("", response_model=list[CourseOut])
 def list_courses(user: User = Depends(current_user), db: Session = Depends(get_db)):
@@ -26,7 +26,15 @@ def list_courses(user: User = Depends(current_user), db: Session = Depends(get_d
 def create_course(payload: CourseCreate, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
     if db.scalar(select(Course).where(Course.code == payload.code.strip().upper())):
         raise HTTPException(status_code=409, detail="Course code already exists")
-    course = Course(code=payload.code.strip().upper(), name=payload.name, description=payload.description, teacher_id=user.id)
+    course = Course(
+        code=payload.code.strip().upper(),
+        name=payload.name,
+        description=payload.description,
+        teacher_id=user.id,
+        academic_year_start=payload.academic_year_start,
+        semester=payload.semester,
+        timezone=payload.timezone,
+    )
     course.schedules = [CourseSchedule(**s.model_dump()) for s in payload.schedules]
     db.add(course)
     db.commit()
@@ -62,4 +70,3 @@ def unenroll(course_id: str, user: User = Depends(require_roles(UserRole.student
     db.delete(enrollment)
     db.commit()
     return {"message": "Unenrolled"}
-

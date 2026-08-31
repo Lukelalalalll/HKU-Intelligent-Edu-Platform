@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -37,11 +37,17 @@ class User(Base):
 
 class Course(Base):
     __tablename__ = "courses"
+    __table_args__ = (
+        CheckConstraint("semester IN ('semester_1', 'semester_2', 'summer')", name="ck_courses_semester"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(Text, default="")
     teacher_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    academic_year_start: Mapped[int] = mapped_column(Integer, nullable=False, default=2025, index=True)
+    semester: Mapped[str] = mapped_column(String(32), nullable=False, default="summer", index=True)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Hong_Kong")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -49,6 +55,7 @@ class Course(Base):
     teacher: Mapped[User] = relationship(back_populates="taught_courses", foreign_keys=[teacher_id])
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     schedules: Mapped[list["CourseSchedule"]] = relationship(back_populates="course", cascade="all, delete-orphan")
+    zoom_meetings: Mapped[list["CourseZoomMeeting"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     files: Mapped[list["FileAsset"]] = relationship(back_populates="course")
 
@@ -73,6 +80,7 @@ class CourseSchedule(Base):
     start_time: Mapped[str] = mapped_column(String(5))
     end_time: Mapped[str] = mapped_column(String(5))
     room: Mapped[str] = mapped_column(String(120), default="")
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     course: Mapped[Course] = relationship(back_populates="schedules")
 
@@ -131,8 +139,33 @@ class RecordingSession(Base):
     zoom_meeting_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="planned")
     recording_file_asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    zoom_meeting_fk: Mapped[str | None] = mapped_column(ForeignKey("course_zoom_meetings.id", ondelete="SET NULL"), nullable=True, index=True)
+    schedule_id: Mapped[str | None] = mapped_column(ForeignKey("course_schedules.id", ondelete="SET NULL"), nullable=True, index=True)
+    occurrence_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    occurrence_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_webhook_event_id: Mapped[str | None] = mapped_column(String(160), nullable=True, unique=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CourseZoomMeeting(Base):
+    __tablename__ = "course_zoom_meetings"
+    __table_args__ = (UniqueConstraint("course_id", "schedule_id", name="uq_course_zoom_meeting_schedule"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    schedule_id: Mapped[str] = mapped_column(ForeignKey("course_schedules.id", ondelete="CASCADE"), index=True)
+    zoom_meeting_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    topic: Mapped[str] = mapped_column(String(200))
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Hong_Kong")
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    join_url: Mapped[str] = mapped_column(String(1000), default="")
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    course: Mapped[Course] = relationship(back_populates="zoom_meetings")
+    schedule: Mapped[CourseSchedule] = relationship()
 
 
 class AgentConversation(Base):
@@ -143,6 +176,12 @@ class AgentConversation(Base):
     title: Mapped[str] = mapped_column(String(200), default="New conversation")
     rag_mode: Mapped[str] = mapped_column(String(40), default="course")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    messages: Mapped[list["AgentMessage"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="AgentMessage.created_at",
+    )
 
 
 class AgentMessage(Base):
@@ -155,6 +194,8 @@ class AgentMessage(Base):
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    conversation: Mapped[AgentConversation] = relationship(back_populates="messages")
+
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -166,4 +207,3 @@ class AuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-

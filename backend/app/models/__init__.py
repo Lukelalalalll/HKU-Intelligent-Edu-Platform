@@ -5,6 +5,7 @@ from app.models.entities import (
     AuditLog,
     Course,
     CourseSchedule,
+    CourseZoomMeeting,
     Enrollment,
     FileAsset,
     RecordingSession,
@@ -12,9 +13,18 @@ from app.models.entities import (
     User,
     UserRole,
 )
+from app.models.ppt import (
+    PptAgentEvent, PptAgentRun, PptExportJob, PptOutlineVersion, PptPage,
+    PptProject, PptProviderConfig, PptRequirement, PptSourceChunk,
+    PptSourceCollection, PptSourceDocument,
+    PptMessage, PptCheckpoint, PptDocumentVersion, PptGenerationJob,
+)
 
 __all__ = [
     "User", "UserRole", "Course", "Enrollment", "CourseSchedule", "Assignment", "Submission",
-    "FileAsset", "RecordingSession", "AgentConversation", "AgentMessage", "AuditLog",
+    "FileAsset", "RecordingSession", "CourseZoomMeeting", "AgentConversation", "AgentMessage", "AuditLog",
+    "PptProject", "PptRequirement", "PptOutlineVersion", "PptPage",
+    "PptSourceCollection", "PptSourceDocument", "PptSourceChunk",
+    "PptAgentRun", "PptAgentEvent", "PptProviderConfig", "PptExportJob",
+    "PptMessage", "PptCheckpoint", "PptDocumentVersion", "PptGenerationJob",
 ]
-

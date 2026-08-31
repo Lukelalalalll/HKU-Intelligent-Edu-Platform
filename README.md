@@ -96,14 +96,32 @@ frontend/
 - `POST /api/auth/logout`
 - `GET /api/auth/session`
 - `GET /api/auth/me`
+- `GET/PATCH /api/profile`
+- `POST/DELETE /api/profile/avatar`
+- `PUT /api/profile/password`
 - `GET/POST /api/courses`
 - `GET /api/courses/{course_id}`
 - `POST/DELETE /api/courses/{course_id}/enroll`
 - `GET/POST /api/courses/{course_id}/assignments`
 - `POST/GET /api/courses/{course_id}/assignments/{assignment_id}/submissions`
 - `POST /api/files`
+- `GET/POST /api/courses/{course_id}/live-class`
+- `POST /api/courses/{course_id}/live-class/provision`
+- `POST /api/courses/{course_id}/live-class/authorize`
+- `POST /api/zoom/webhooks`
 
 ## 后续 Phase 2
 
 文件中心、课程资料上传界面、RAG 索引和检索、Zoom 录课 API、PPT/Markdown/PDF 处理、评分工作台、通知和生产部署配置。
 
+## 课件 Agent
+
+教师登录后打开 `/teacher/courseware-agent`。在“模型设置”中配置 OpenAI-compatible Base URL、API Key 和模型（默认模板为 DeepSeek：`https://api.deepseek.com` + `deepseek-v4-flash`；可选 `deepseek-v4-pro`、支持图片输入的 `deepseek-v4-flash-vision-exp`）；DeepSeek 暂不提供 Embedding，相关字段可留空。Key 会按教师加密保存并以掩码形式展示。随后可以创建课件项目，上传 PDF/PPTX/DOCX/Markdown 资料，生成大纲、逐页 Summary/Draft/Design，使用 Storyboard 和放映模式预览，并导出可编辑 PPTX。
+
+联网搜索不是生成 PPT 的硬依赖；需要联网研究时配置 `SEARCH_PROVIDER_URL`（请求体为 `{ "query": "..." }`，响应为 `{ "results": [...] }`）。未配置时界面会明确提示，而不会显示伪造结果。
+
+升级已有数据库时请执行：`cd backend && alembic upgrade head`。
+
+## Zoom 实时课堂
+
+课程详情页支持按排课时间进入嵌入式 Zoom Meeting SDK。教师先点击“准备 Zoom 课堂”，平台会为每条排课创建或同步一个周循环会议；开放时间为课前 15 分钟至课后 30 分钟。需要在 `backend/.env` 配置 Zoom Server-to-Server OAuth、Meeting SDK 和 Webhook 凭据（字段见 `.env.example`）。未配置凭据时，页面会安全地显示待配置状态，不会向浏览器暴露 Zoom Secret 或主持人启动链接。

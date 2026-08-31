@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
@@ -22,3 +24,14 @@ def upload_file(file: UploadFile = File(...), user: User = Depends(current_user)
     db.refresh(asset)
     return {"id": asset.id, "name": asset.original_name, "size_bytes": asset.size_bytes, "storage_key": key, "url": storage.get_url(key)}
 
+@router.get("/{storage_key}")
+def download_file(storage_key: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if Path(storage_key).name != storage_key:
+        raise HTTPException(status_code=404, detail="File not found")
+    asset = db.scalar(select(FileAsset).where(FileAsset.storage_key == storage_key))
+    if not asset or (asset.uploader_id != user.id and user.role.value != "admin"):
+        raise HTTPException(status_code=404, detail="File not found")
+    path = settings.upload_path / storage_key
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path, media_type=asset.mime_type, filename=asset.original_name)

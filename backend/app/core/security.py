@@ -35,8 +35,27 @@ def clear_auth_cookies(response) -> None:
     response.delete_cookie(ACCESS_COOKIE, path="/")
     response.delete_cookie(REFRESH_COOKIE, path="/")
 
+
+def isolated_access_token(request: Request) -> str | None:
+    """Return the bearer token for a frontend-managed isolated session.
+
+    Browsers scope cookies to a host, not a port or tab.  The development
+    frontend therefore marks its requests and keeps the token in
+    sessionStorage (which is isolated per tab).  Marked requests must never
+    fall back to the shared cookie, otherwise an old tab could authenticate
+    as whichever account most recently changed the cookie.
+    """
+    if request.headers.get("X-HKU-Session-Mode") != "isolated":
+        return None
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    return token
+
+
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.cookies.get(ACCESS_COOKIE)
+    token = isolated_access_token(request) or request.cookies.get(ACCESS_COOKIE)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     try:
@@ -56,4 +75,3 @@ def require_roles(*roles: UserRole):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")
         return user
     return dependency
-

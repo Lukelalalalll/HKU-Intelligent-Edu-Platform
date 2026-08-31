@@ -13,12 +13,40 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
     upload_dir: str = "backend/uploads"
     demo_accounts_enabled: bool = True
+    # DeepSeek exposes an OpenAI-compatible API at this base URL.
+    llm_base_url: str = "https://api.deepseek.com"
+    llm_api_key: str = ""
+    llm_model: str = "deepseek-v4-flash"
+    # DeepSeek currently does not expose an embeddings endpoint. Keep this
+    # optional so the provider template does not suggest an OpenAI model.
+    embedding_model: str = ""
+    search_provider_url: str = ""
+    search_provider_key: str = ""
+    ppt_storage_dir: str = "backend/ppt_storage"
+    ppt_generation_workers: int = 4
+    zoom_account_id: str = ""
+    zoom_client_id: str = ""
+    zoom_client_secret: str = ""
+    zoom_host_user_id: str = "me"
+    zoom_default_timezone: str = "Asia/Hong_Kong"
+    zoom_sdk_client_id: str = ""
+    zoom_sdk_key: str = ""
+    zoom_sdk_secret: str = ""
+    zoom_webhook_secret_token: str = ""
+    zoom_webhook_verification_token: str = ""
+    zoom_api_base_url: str = "https://api.zoom.us/v2"
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), extra="ignore")
 
     @property
     def upload_path(self) -> Path:
         path = Path(self.upload_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def ppt_storage_path(self) -> Path:
+        path = Path(self.ppt_storage_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -29,4 +57,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-
