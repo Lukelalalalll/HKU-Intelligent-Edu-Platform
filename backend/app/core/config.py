@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     search_provider_key: str = ""
     ppt_storage_dir: str = "backend/ppt_storage"
     ppt_generation_workers: int = 4
+    ppt_generation_executor_workers: int = 4
+    ppt_generation_poll_seconds: float = 3.0
     zoom_account_id: str = ""
     zoom_client_id: str = ""
     zoom_client_secret: str = ""

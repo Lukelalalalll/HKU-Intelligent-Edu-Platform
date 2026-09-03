@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import shutil
+import threading
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +27,11 @@ from app.services.ppt_theme import preview_filename
 
 STAGES = ("init", "outline", "theme", "layout", "design", "export")
 STATUSES = ("empty", "ready", "running", "confirmed", "stale", "failed")
-generation_executor = ThreadPoolExecutor(max_workers=1)
+generation_executor = ThreadPoolExecutor(max_workers=max(1, min(int(getattr(settings, "ppt_generation_executor_workers", 4)), 8)))
+_SOURCE_CONTEXT_CACHE: dict[str, list[dict[str, Any]]] = {}
+_SOURCE_CONTEXT_LOCK = threading.Lock()
+_GENERATION_LOCKS: dict[str, threading.Lock] = {}
+_GENERATION_LOCKS_GUARD = threading.Lock()
 
 
 def _mask(value: str) -> str:
@@ -78,10 +85,10 @@ class ProviderGateway:
             from openai import OpenAI
         except ImportError as exc:
             raise HTTPException(500, "后端缺少 openai 依赖，请重新安装 requirements.txt") from exc
-        return OpenAI(
-            api_key=self.api_key,
-            base_url=(self.config.base_url if self.config else settings.llm_base_url),
-            timeout=(self.config.timeout_seconds if self.config else 120),
+        return _cached_openai_client(
+            self.api_key,
+            (self.config.base_url if self.config else settings.llm_base_url),
+            int(self.config.timeout_seconds if self.config else 120),
         )
 
     def json(self, system: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -167,6 +174,12 @@ class ProviderGateway:
         yield {"type": "final", "data": data}
 
 
+@lru_cache(maxsize=32)
+def _cached_openai_client(api_key: str, base_url: str, timeout: int):
+    from openai import OpenAI
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+
+
 class PptAgentService:
     def __init__(self, db: Session, user: User):
         self.db, self.user = db, user
@@ -224,7 +237,8 @@ class PptAgentService:
         p = self.project(project_id)
         query = select(PptMessage).where(PptMessage.project_id == p.id)
         if page_id is not None: query = query.where(PptMessage.page_id == page_id)
-        rows = self.db.scalars(query.order_by(PptMessage.created_at.asc())).all()
+        rows = self.db.scalars(query.order_by(PptMessage.created_at.desc()).limit(100)).all()
+        rows.reverse()
         return [{"id": x.id, "role": x.role, "stage": x.stage, "scope_type": x.scope_type, "page_id": x.page_id, "content_md": x.content_md, "payload": x.structured_payload_json or {}, "created_at": x.created_at.isoformat()} for x in rows]
 
     def list_checkpoints(self, project_id: str) -> list[dict[str, Any]]:
@@ -327,14 +341,25 @@ class PptAgentService:
 
     def _source_context(self, p: PptProject) -> list[dict[str, Any]]:
         rows = self.db.scalars(select(PptSourceDocument).join(PptSourceCollection).where(PptSourceCollection.project_id == p.id)).all()
-        return [{"title": x.title, "content": (x.content_md or "")[:6000], "metadata": x.metadata_json or {}} for x in rows]
+        fingerprint = hashlib.sha1("|".join(f"{x.id}:{len(x.content_md or '')}:{x.title}" for x in rows).encode()).hexdigest()
+        cache_key = f"{p.id}:{fingerprint}"
+        with _SOURCE_CONTEXT_LOCK:
+            cached = _SOURCE_CONTEXT_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        context = [{"id": x.id, "title": x.title, "source_type": x.source_type, "collection_id": x.collection_id, "content": (x.content_md or "")[:6000], "metadata": x.metadata_json or {}} for x in rows]
+        with _SOURCE_CONTEXT_LOCK:
+            for key in [key for key in _SOURCE_CONTEXT_CACHE if key.startswith(f"{p.id}:") and key != cache_key]:
+                _SOURCE_CONTEXT_CACHE.pop(key, None)
+            _SOURCE_CONTEXT_CACHE[cache_key] = context
+        return context
 
     def list_sources(self, project_id: str) -> list[dict[str, Any]]:
         p = self.project(project_id)
         rows = self.db.scalars(select(PptSourceDocument).join(PptSourceCollection).where(PptSourceCollection.project_id == p.id).order_by(PptSourceDocument.id.asc())).all()
         return [{"id": x.id, "title": x.title, "source_type": x.source_type, "metadata": x.metadata_json or {}, "collection_id": x.collection_id} for x in rows]
 
-    def requirement_chat(self, project_id: str, content: str | None = None, option_id: str | None = None, option_label: str | None = None, bootstrap: bool = False) -> dict[str, Any]:
+    def _requirement_input(self, project_id: str, content: str | None, option_id: str | None, option_label: str | None, bootstrap: bool):
         p = self.project(project_id)
         req = self.db.scalar(select(PptRequirement).where(PptRequirement.project_id == p.id))
         if not req:
@@ -343,15 +368,11 @@ class PptAgentService:
         if not bootstrap and text:
             self._message(p, "user", text, payload={"option_id": option_id, "option_label": option_label} if option_id else {})
         answers = dict(req.answers_json or {})
-        transcript = [{"role": m.role, "content": m.content_md} for m in self.db.scalars(select(PptMessage).where(PptMessage.project_id == p.id, PptMessage.page_id.is_(None)).order_by(PptMessage.created_at.asc())).all()][-24:]
-        prompt = """你是 PPT 需求访谈 Agent。根据项目描述、资料和对话历史，逐轮帮助教师明确课件需求。只输出 JSON：
-{"assistant_markdown":"...","brief_summary":"用教师口吻总结当前课件需求（1-3句）","question":{"code":"audience|duration|goals|slide_count|other","label":"...","options":["..."]}|null,"answers_patch":{},"missing_fields":["..."],"ready_to_outline":false,"suggested_additions":["..."],"page_count_target":null}
-每轮最多 6 个选项；选项必须是短文本。至少确认受众、教学目标、课堂时长和页数/节奏，不要询问视觉风格，视觉主题由后续步骤人工选择。信息足够时 ready_to_outline=true，并明确告诉教师可以点击生成大纲，但仍给出可补充内容。"""
-        fallback = {"assistant_markdown": "为了做出合适的大纲，还需要确认教学目标和课件节奏。你最希望学生学会什么？", "brief_summary": "正在梳理课件主题、受众与教学节奏。", "question": {"code": "goals", "label": "这套课件最重要的教学目标是什么？", "options": ["理解核心概念", "掌握实践方法", "完成课堂讨论", "准备考试或汇报"]}, "answers_patch": {}, "missing_fields": ["goals"], "ready_to_outline": False, "suggested_additions": [], "page_count_target": None}
-        try:
-            data = ProviderGateway(self.db, self.user.id).json(prompt, {"request": p.request_text, "answers": answers, "history": transcript, "sources": self._source_context(p)})
-        except HTTPException:
-            data = fallback
+        transcript_rows = self.db.scalars(select(PptMessage).where(PptMessage.project_id == p.id, PptMessage.page_id.is_(None)).order_by(PptMessage.created_at.desc()).limit(24)).all()
+        transcript = [{"role": m.role, "content": m.content_md} for m in reversed(transcript_rows)]
+        return p, req, answers, transcript
+
+    def _apply_requirement_data(self, p: PptProject, req: PptRequirement, answers: dict[str, Any], data: dict[str, Any], fallback: dict[str, Any], attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         patch = data.get("answers_patch") if isinstance(data.get("answers_patch"), dict) else {}
         answers.update({str(k): v for k, v in patch.items() if v not in (None, "")})
         for key in ("page_count_target",):
@@ -371,7 +392,46 @@ class PptAgentService:
         payload = {"intent_type": "clarify_requirements", "question": data.get("question"), "answers": answers, "missing_fields": data.get("missing_fields") or [], "ready_to_outline": ready, "suggested_additions": suggestions, "brief_summary": answers["__brief_summary"]}
         assistant = self._message(p, "assistant", assistant_text, payload=payload)
         self.db.commit()
-        return {"project_id": p.id, "message": {"id": assistant.id, "role": assistant.role, "stage": assistant.stage, "scope_type": assistant.scope_type, "content_md": assistant.content_md, "payload": payload, "created_at": assistant.created_at.isoformat()}, "status": req.status, "answers": answers, "question": data.get("question") if isinstance(data.get("question"), dict) else None, "ready_to_outline": ready, "missing_fields": data.get("missing_fields") or [], "suggested_additions": suggestions, "brief_summary": answers["__brief_summary"], "attachments": self.list_sources(p.id)}
+        if attachments is None:
+            attachments = self.list_sources(p.id)
+        return {"project_id": p.id, "message": {"id": assistant.id, "role": assistant.role, "stage": assistant.stage, "scope_type": assistant.scope_type, "content_md": assistant.content_md, "payload": payload, "created_at": assistant.created_at.isoformat()}, "status": req.status, "answers": answers, "question": data.get("question") if isinstance(data.get("question"), dict) else None, "ready_to_outline": ready, "missing_fields": data.get("missing_fields") or [], "suggested_additions": suggestions, "brief_summary": answers["__brief_summary"], "attachments": attachments}
+
+    def requirement_chat(self, project_id: str, content: str | None = None, option_id: str | None = None, option_label: str | None = None, bootstrap: bool = False) -> dict[str, Any]:
+        p, req, answers, transcript = self._requirement_input(project_id, content, option_id, option_label, bootstrap)
+        prompt = self._requirement_prompt()
+        fallback = self._requirement_fallback()
+        sources = self._source_context(p)
+        try:
+            data = ProviderGateway(self.db, self.user.id).json(prompt, {"request": p.request_text, "answers": answers, "history": transcript, "sources": sources})
+        except HTTPException:
+            data = fallback
+        attachments = [{key: source.get(key) for key in ("id", "title", "source_type", "metadata", "collection_id")} for source in sources]
+        return self._apply_requirement_data(p, req, answers, data, fallback, attachments)
+
+    @staticmethod
+    def _requirement_prompt() -> str:
+        return """你是 PPT 需求访谈 Agent。根据项目描述、资料和对话历史，逐轮帮助教师明确课件需求。只输出 JSON：
+{"assistant_markdown":"...","brief_summary":"用教师口吻总结当前课件需求（1-3句）","question":{"code":"audience|duration|goals|slide_count|other","label":"...","options":["..."]}|null,"answers_patch":{},"missing_fields":["..."],"ready_to_outline":false,"suggested_additions":["..."],"page_count_target":null}
+每轮最多 6 个选项；选项必须是短文本。至少确认受众、教学目标、课堂时长和页数/节奏，不要询问视觉风格，视觉主题由后续步骤人工选择。信息足够时 ready_to_outline=true，并明确告诉教师可以点击生成大纲，但仍给出可补充内容。"""
+
+    @staticmethod
+    def _requirement_fallback() -> dict[str, Any]:
+        return {"assistant_markdown": "为了做出合适的大纲，还需要确认教学目标和课件节奏。你最希望学生学会什么？", "brief_summary": "正在梳理课件主题、受众与教学节奏。", "question": {"code": "goals", "label": "这套课件最重要的教学目标是什么？", "options": ["理解核心概念", "掌握实践方法", "完成课堂讨论", "准备考试或汇报"]}, "answers_patch": {}, "missing_fields": ["goals"], "ready_to_outline": False, "suggested_additions": [], "page_count_target": None}
+
+    def requirement_chat_stream(self, project_id: str, content: str | None = None, option_id: str | None = None, option_label: str | None = None, bootstrap: bool = False):
+        p, req, answers, transcript = self._requirement_input(project_id, content, option_id, option_label, bootstrap)
+        prompt, fallback = self._requirement_prompt(), self._requirement_fallback()
+        sources = self._source_context(p)
+        attachments = [{key: source.get(key) for key in ("id", "title", "source_type", "metadata", "collection_id")} for source in sources]
+        try:
+            stream = ProviderGateway(self.db, self.user.id).stream_json(prompt, {"request": p.request_text, "answers": answers, "history": transcript, "sources": sources})
+            for event in stream:
+                if event.get("type") == "chunk":
+                    yield event
+                elif event.get("type") == "final":
+                    yield {"type": "complete", "result": self._apply_requirement_data(p, req, answers, event.get("data") or {}, fallback, attachments)}
+        except Exception:
+            yield {"type": "complete", "result": self._apply_requirement_data(p, req, answers, fallback, fallback, attachments)}
 
     def route_message(self, project_id: str, content: str, page_id: str | None = None, option_id: str | None = None, option_label: str | None = None) -> dict[str, Any]:
         p = self.project(project_id)
@@ -481,19 +541,22 @@ class PptAgentService:
         p = self.project(project_id)
         if not p.theme_id:
             raise HTTPException(409, "请先选择主题")
-        existing = self.db.scalar(select(PptGenerationJob).where(
-            PptGenerationJob.project_id == p.id,
-            PptGenerationJob.status.in_(["queued", "running"]),
-        ).order_by(PptGenerationJob.created_at.desc()))
-        if existing:
-            return self.serialize_generation(existing)
-        pages = sorted(p.pages, key=lambda x: x.sort_order)
-        p.design_status, p.current_stage = "running", "layout"
-        job = PptGenerationJob(project_id=p.id, total_pages=len(pages), status="queued", stage="queued")
-        self.db.add(job); self.db.commit(); self.db.refresh(job)
-        self._event(p, "generation.started", {"job_id": job.id, "total_pages": len(pages)}); self.db.commit()
-        generation_executor.submit(_run_generation_job, job.id, p.id, self.user.id)
-        return self.serialize_generation(job)
+        with _GENERATION_LOCKS_GUARD:
+            lock = _GENERATION_LOCKS.setdefault(p.id, threading.Lock())
+        with lock:
+            existing = self.db.scalar(select(PptGenerationJob).where(
+                PptGenerationJob.project_id == p.id,
+                PptGenerationJob.status.in_(["queued", "running"]),
+            ).order_by(PptGenerationJob.created_at.desc()))
+            if existing:
+                return self.serialize_generation(existing)
+            pages = sorted(p.pages, key=lambda x: x.sort_order)
+            p.design_status, p.current_stage = "running", "layout"
+            job = PptGenerationJob(project_id=p.id, total_pages=len(pages), status="queued", stage="queued")
+            self.db.add(job); self.db.commit(); self.db.refresh(job)
+            self._event(p, "generation.started", {"job_id": job.id, "total_pages": len(pages)}); self.db.commit()
+            generation_executor.submit(_run_generation_job, job.id, p.id, self.user.id)
+            return self.serialize_generation(job)
 
     def generation_job(self, project_id: str, job_id: str) -> dict[str, Any]:
         self.project(project_id)
@@ -723,8 +786,12 @@ class PptAgentService:
         gateway = ProviderGateway(self.db, self.user.id)
         selected_layout = layout or {"id": (page.document or {}).get("layout", "title-content"), "kind": "content"}
         raw = gateway.json("你是资深教学课件设计 Agent。只输出结构化 Slide JSON：{layout,theme,elements:[{type,x,y,w,h,text,items,src,font_size,font_weight,color,fill}],speaker_notes}。大纲只是页面职责，不是最终全文；必须优先使用 content_plan 扩写后的论点、案例和视觉建议。根据页面角色设计清晰层级：标题 30-44px、正文 18-24px、辅助文字 12-16px；封面/目录/章节/对比/流程/案例/总结使用匹配的视觉结构。所有坐标使用 0-100 百分比，留出安全边距，禁止严重重叠和文字堆叠。", {"mode": mode, "page": {"title": page.title, "section": page.section_title, "role": page.page_role, "bullets": page.bullets_json, "summary": page.summary_md, "content_plan": page.content_plan_json or {}, "visual_plan": page.visual_plan_json or {}}, "outline": outline or [], "layout": selected_layout, "theme": p.theme_config or {}})
+        return self._normalize_document(raw, selected_layout, p.theme_config or {})
+
+    @staticmethod
+    def _normalize_document(raw: dict[str, Any], selected_layout: dict[str, Any], theme_config: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(raw or {}); normalized["version"] = 2; normalized["canvas"] = {"width": 1280, "height": 720}; normalized["elements"] = []
-        normalized["layout"] = selected_layout["id"]; colors = (p.theme_config or {}).get("colors", {}); normalized["theme"] = {**colors, "background": colors.get("bg")}
+        normalized["layout"] = selected_layout["id"]; colors = (theme_config or {}).get("colors", {}); normalized["theme"] = {**colors, "background": colors.get("bg")}
         for index, item in enumerate(raw.get("elements") or []):
             element = dict(item or {}); element["id"] = str(element.get("id") or f"element-{index + 1}")
             for key in ("x", "y", "w", "h"):
@@ -826,9 +893,10 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
         service._event(project, "generation.started", {"job_id": job.id, "total_pages": job.total_pages}); db.commit()
         pages = sorted(project.pages, key=lambda x: x.sort_order)
         outline = [{"id": p.id, "order": p.sort_order, "section": p.section_title, "title": p.title, "bullets": p.bullets_json or []} for p in pages]
+        source_context = service._source_context(project)
         planner_prompt = """你是教学课件 Deck Planner。只输出 JSON：{pages:[{id,role,core_message,content_requirements,visual_type,speaker_notes}]}。大纲只是教学主线，不是页面全文。必须为页面分配 cover、catalogue、section、concept、comparison、process、case、quote、summary、cta 等角色；第一页必须 cover，第二页必须 catalogue。根据主题与页面上下文补充论点、案例、数据和视觉表达建议，不能编造引用。"""
         try:
-            planner = ProviderGateway(db, user.id).json(planner_prompt, {"request": project.request_text, "outline": outline, "requirements": service._source_context(project)})
+            planner = ProviderGateway(db, user.id).json(planner_prompt, {"request": project.request_text, "outline": outline, "requirements": source_context})
         except Exception:
             planner = {"pages": []}
         plan_by_id = {str(item.get("id")): item for item in (planner.get("pages") or []) if isinstance(item, dict) and item.get("id")}
@@ -859,21 +927,33 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
                 svc = PptAgentService(local, u)
                 svc._event(p, "page.content_started", {"job_id": job_id, "page_id": page_id}); local.commit()
                 try:
-                    expanded = ProviderGateway(local, u.id).json("只输出 JSON：{bullets:[string],summary:string,speaker_notes:string,citations:[object],visual_plan:object}。根据页面主线与资料补充教学内容，不要重复大纲，不得编造引用。", {"project": p.request_text, "page": svc.serialize_page(page), "plan": page.content_plan_json or {}, "sources": svc._source_context(p)})
-                    if isinstance(expanded, dict):
-                        if isinstance(expanded.get("bullets"), list) and expanded["bullets"]: page.bullets_json = [str(x) for x in expanded["bullets"][:8]]
-                        page.summary_md = str(expanded.get("summary") or page.summary_md or "")
-                        page.speaker_notes = str(expanded.get("speaker_notes") or page.speaker_notes or "")
-                        if isinstance(expanded.get("citations"), list): page.citations_json = expanded["citations"][:30]
-                        page.visual_plan_json = expanded.get("visual_plan") if isinstance(expanded.get("visual_plan"), dict) else page.visual_plan_json
+                    combined = ProviderGateway(local, u.id).json("只输出 JSON：{bullets:[string],summary:string,speaker_notes:string,citations:[object],visual_plan:object,elements:[{type,x,y,w,h,text,items,src,font_size,font_weight,color,fill}]}. 根据页面主线与资料补充教学内容并设计版式；不编造引用，坐标使用 0-100 百分比，标题 30-44px、正文 18-24px，避免重叠和文字堆叠。", {"project": p.request_text, "page": svc.serialize_page(page), "plan": page.content_plan_json or {}, "sources": source_context, "layout": layouts.get(assignments.get(page_id), layout_list[0]), "theme": p.theme_config or {}})
+                    if isinstance(combined, dict):
+                        if isinstance(combined.get("bullets"), list) and combined["bullets"]: page.bullets_json = [str(x) for x in combined["bullets"][:8]]
+                        page.summary_md = str(combined.get("summary") or page.summary_md or "")
+                        page.speaker_notes = str(combined.get("speaker_notes") or page.speaker_notes or "")
+                        if isinstance(combined.get("citations"), list): page.citations_json = combined["citations"][:30]
+                        page.visual_plan_json = combined.get("visual_plan") if isinstance(combined.get("visual_plan"), dict) else page.visual_plan_json
+                        document = svc._normalize_document(combined, layouts.get(assignments.get(page_id), layout_list[0]), p.theme_config or {})
+                    else:
+                        raise ValueError("invalid combined design")
                 except Exception:
-                    pass
+                    try:
+                        document = svc._slide_doc(p, page, "design", layout=layouts.get(assignments.get(page_id), layout_list[0]), outline=outline)
+                    except Exception:
+                        document = svc._template_document(page, p.theme_config or {}, layouts.get(assignments.get(page_id), layout_list[0]))
                 svc._event(p, "page.content_completed", {"job_id": job_id, "page_id": page_id}); local.commit()
                 layout = layouts.get(assignments.get(page_id), layout_list[0])
-                try: document = svc._slide_doc(p, page, "design", layout=layout, outline=outline)
-                except Exception: document = svc._template_document(page, p.theme_config or {}, layout)
-                if not svc._document_quality_ok(document): document = svc._template_document(page, p.theme_config or {}, layout)
+                if not svc._document_quality_ok(document):
+                    try:
+                        repaired = svc._slide_doc(p, page, "design_repair", layout=layout, outline=outline)
+                        document = repaired if svc._document_quality_ok(repaired) else svc._template_document(page, p.theme_config or {}, layout)
+                    except Exception:
+                        document = svc._template_document(page, p.theme_config or {}, layout)
                 page.design_document_json = document; page.document_revision += 1; page.statuses_json = {**(page.statuses_json or {}), "design": "ready"}
+                version_no = (local.scalar(select(PptDocumentVersion).where(PptDocumentVersion.page_id == page.id).order_by(PptDocumentVersion.version_no.desc())) or PptDocumentVersion(version_no=0)).version_no + 1
+                version = PptDocumentVersion(project_id=p.id, page_id=page.id, version_no=version_no, document_json=document)
+                local.add(version); local.flush(); page.current_document_version_id = version.id
                 local.commit()
                 progress = local.scalar(select(PptGenerationJob).where(PptGenerationJob.id == job_id).with_for_update())
                 if progress:

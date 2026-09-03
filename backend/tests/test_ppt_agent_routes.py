@@ -101,6 +101,26 @@ def test_requirement_chat_is_project_and_teacher_scoped(monkeypatch):
             raise AssertionError("another teacher must not access this project")
 
 
+def test_requirement_chat_stream_emits_model_chunks_and_persists_once(monkeypatch):
+    with Session() as db:
+        teacher = User(username="stream_teacher", email="stream@example.test", name="Stream", password_hash=hash_password("123456"), role=UserRole.teacher)
+        db.add(teacher); db.commit(); db.refresh(teacher)
+        service = PptAgentService(db, teacher)
+        project = service.create_project("流式需求", "制作课程课件")
+
+        def fake_stream(self, system, payload):
+            yield {"type": "chunk", "chunk": "信息"}
+            yield {"type": "chunk", "chunk": "完整"}
+            yield {"type": "final", "data": {"assistant_markdown": "信息完整，可以生成大纲。", "brief_summary": "本科生 50 分钟课程。", "question": None, "answers_patch": {"audience": "本科生", "duration": "50分钟"}, "missing_fields": [], "ready_to_outline": True, "suggested_additions": [], "page_count_target": 10}}
+
+        monkeypatch.setattr("app.services.ppt_agent.ProviderGateway.stream_json", fake_stream)
+        events = list(service.requirement_chat_stream(project["id"], content="本科生，50分钟"))
+        assert [event["chunk"] for event in events if event["type"] == "chunk"] == ["信息", "完整"]
+        result = events[-1]["result"]
+        assert result["ready_to_outline"] is True
+        assert len([m for m in service.list_messages(project["id"]) if m["role"] == "assistant"]) == 2
+
+
 def test_theme_to_design_auto_assigns_and_creates_documents(monkeypatch):
     with Session() as db:
         user = User(username="layout_teacher", email="layout@example.test", name="Layout", password_hash=hash_password("123456"), role=UserRole.teacher)

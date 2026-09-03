@@ -109,12 +109,11 @@ def render_slide_svg(page: Any, theme: dict[str, Any], layout: dict[str, Any] | 
         if document_theme.get("surface_color"):
             base_colors["surface"] = document_theme["surface_color"]
     colors = base_colors
-    custom_elements = document.get("elements") if isinstance(document, dict) else None
+    raw_custom_elements = document.get("elements") if isinstance(document, dict) else None
+    custom_elements = [item for item in raw_custom_elements if isinstance(item, dict)] if isinstance(raw_custom_elements, list) else []
     if custom_elements:
         rendered: list[str] = []
         for item in custom_elements:
-            if not isinstance(item, dict):
-                continue
             kind = str(item.get("type") or "").strip().lower()
             if kind == "image" or (kind == "icon" and item.get("src")):
                 rendered.append(f'<image href="{_safe(item.get("src"))}" x="{float(item.get("x", 0)) * 12.8:.1f}" y="{float(item.get("y", 0)) * 7.2:.1f}" width="{float(item.get("w", 20)) * 12.8:.1f}" height="{float(item.get("h", 20)) * 7.2:.1f}" preserveAspectRatio="{"xMidYMid slice" if item.get("object_fit", "cover") == "cover" else "xMidYMid meet"}" opacity="{float(item.get("opacity", 1))}"/>')
@@ -137,11 +136,12 @@ def render_slide_svg(page: Any, theme: dict[str, Any], layout: dict[str, Any] | 
         body += '<line x1="650" y1="180" x2="650" y2="610" class="divider" />'
     elif not custom_elements:
         body = ''.join(f'<text x="100" y="{220+i*58}" class="body">• {_safe(item)}</text>' for i, item in enumerate(bullets))
+    default_title = f'<text x="80" y="105" class="title">{title}</text>' if not custom_elements else ""
+    default_footer = f'<text x="80" y="675" style="font:16px Arial;fill:{colors["accent"]}">{_safe(page.section_title)}</text>' if not custom_elements else ""
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
 <rect width="1280" height="720" fill="{colors["bg"]}"/><rect x="0" y="0" width="18" height="720" fill="{colors["accent"]}"/>
 <style>.title{{font:700 42px Arial;fill:{colors["title"]}}}.body{{font:24px Arial;fill:{colors["body"]}}}.section{{font:700 64px Arial;fill:{colors["title"]}}}.quote{{font:italic 36px Arial;fill:{colors["title"]}}}.divider{{stroke:{colors["accent"]};stroke-width:2}}</style>
-<text x="80" y="105" class="title">{title}</text>{body}
-<text x="80" y="675" style="font:16px Arial;fill:{colors["accent"]}">{_safe(page.section_title)}</text></svg>'''
+{default_title}{body}{default_footer}</svg>'''
 
 
 def preview_filename(project_id: str, page_id: str) -> str:

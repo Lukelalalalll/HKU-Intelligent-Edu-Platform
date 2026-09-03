@@ -114,12 +114,13 @@ def requirement_chat_stream(project_id: str, payload: RequirementChatIn, service
     def event_stream():
         try:
             yield f"data: {json.dumps({'type': 'status', 'status': '正在理解你的需求'}, ensure_ascii=False)}\n\n"
-            result = service.requirement_chat(project_id, payload.content, payload.option_id, payload.option_label, payload.bootstrap)
-            text = result["message"]["content_md"]
-            # Keep chunks small so the browser can render a natural typewriter effect.
-            for index in range(0, len(text), 6):
-                yield f"data: {json.dumps({'type': 'chunk', 'chunk': text[index:index + 6]}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'complete', 'chat': {'response': text, 'message_id': result['message']['id']}, 'requirement': result}, ensure_ascii=False)}\n\n"
+            for event in service.requirement_chat_stream(project_id, payload.content, payload.option_id, payload.option_label, payload.bootstrap):
+                if event.get("type") == "chunk":
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                elif event.get("type") == "complete":
+                    result = event["result"]
+                    text = result["message"]["content_md"]
+                    yield f"data: {json.dumps({'type': 'complete', 'chat': {'response': text, 'message_id': result['message']['id']}, 'requirement': result}, ensure_ascii=False)}\n\n"
         except HTTPException as exc:
             service.db.rollback()
             yield f"data: {json.dumps({'type': 'error', 'detail': exc.detail}, ensure_ascii=False)}\n\n"
