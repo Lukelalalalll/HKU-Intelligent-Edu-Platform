@@ -77,6 +77,16 @@ class CourseOut(BaseModel):
     enrolled_count: int
     schedules: list[ScheduleIn]
 
+class ParticipantSummaryOut(BaseModel):
+    id: str
+    name: str
+    email: str
+
+class ParticipantDetailOut(ParticipantSummaryOut):
+    username: str
+    avatar_url: str | None
+    enrolled_at: datetime
+
 class AssignmentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = ""
@@ -121,6 +131,32 @@ class TeacherDashboardOut(BaseModel):
     courses: list[CourseOut]
     schedule: list[TeacherScheduleOut]
     pending_assignments: list[PendingAssignmentOut]
+
+
+class StudentScheduleOut(ScheduleIn):
+    course_id: str
+    course_code: str
+    course_name: str
+    teacher_name: str
+
+
+class StudentAssignmentReminderOut(BaseModel):
+    id: str
+    course_id: str
+    course_name: str
+    title: str
+    due_at: datetime | None
+    max_score: int
+    submission_status: Literal["not_started", "submitted", "graded", "overdue"]
+    submitted_at: datetime | None
+    score: int | None
+
+
+class StudentDashboardOut(BaseModel):
+    timezone: str
+    courses: list[CourseOut]
+    schedule: list[StudentScheduleOut]
+    assignment_reminders: list[StudentAssignmentReminderOut]
 
 
 class LiveClassScheduleOut(BaseModel):

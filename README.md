@@ -96,6 +96,7 @@ frontend/
 - `POST /api/auth/logout`
 - `GET /api/auth/session`
 - `GET /api/auth/me`
+- `GET /api/student/dashboard`
 - `GET/PATCH /api/profile`
 - `POST/DELETE /api/profile/avatar`
 - `PUT /api/profile/password`

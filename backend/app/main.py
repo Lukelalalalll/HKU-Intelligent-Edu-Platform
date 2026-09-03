@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.session import Base, engine
 from app.db.session import SessionLocal
-from app.api.routes import agent, assignments, auth, courses, files, teacher, ppt, profile, live_class
+from app.api.routes import agent, assignments, auth, courses, files, teacher, student, ppt, profile, live_class
 from app.models import *  # noqa: F401,F403
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.include_router(courses.router)
 app.include_router(assignments.router)
 app.include_router(files.router)
 app.include_router(teacher.router)
+app.include_router(student.router)
 app.include_router(agent.router)
 app.include_router(ppt.router)
 app.include_router(profile.router)

@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user, require_roles
 from app.db.session import get_db
 from app.models import Course, CourseSchedule, Enrollment, User, UserRole
-from app.schemas import CourseCreate, CourseOut, ScheduleIn
+from app.schemas import CourseCreate, CourseOut, ParticipantDetailOut, ParticipantSummaryOut, ScheduleIn
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
 
@@ -51,6 +51,49 @@ def get_course(course_id: str, user: User = Depends(current_user), db: Session =
     if user.role == UserRole.teacher and course.teacher_id != user.id:
         raise HTTPException(403, "Course access denied")
     return serialize(course)
+
+@router.get("/{course_id}/participants", response_model=list[ParticipantDetailOut | ParticipantSummaryOut])
+def list_participants(course_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    course = db.scalar(
+        select(Course)
+        .where(Course.id == course_id)
+        .options(selectinload(Course.enrollments).selectinload(Enrollment.student))
+    )
+    if not course:
+        raise HTTPException(404, "Course not found")
+    if user.role == UserRole.student and not any(enrollment.student_id == user.id for enrollment in course.enrollments):
+        raise HTTPException(403, "You are not enrolled in this course")
+    if user.role == UserRole.teacher and course.teacher_id != user.id:
+        raise HTTPException(403, "Course access denied")
+
+    enrollments = sorted(
+        (enrollment for enrollment in course.enrollments if enrollment.student.role == UserRole.student),
+        key=lambda enrollment: (
+            0 if user.role == UserRole.student and enrollment.student_id == user.id else 1,
+            (enrollment.student.name or "").casefold(),
+            enrollment.student.email.casefold(),
+        ),
+    )
+    if user.role in {UserRole.teacher, UserRole.admin}:
+        return [
+            ParticipantDetailOut(
+                id=enrollment.student.id,
+                name=enrollment.student.name,
+                email=enrollment.student.email,
+                username=enrollment.student.username,
+                avatar_url=enrollment.student.avatar_url,
+                enrolled_at=enrollment.enrolled_at,
+            ).model_dump(mode="json")
+            for enrollment in enrollments
+        ]
+    return [
+        ParticipantSummaryOut(
+            id=enrollment.student.id,
+            name=enrollment.student.name,
+            email=enrollment.student.email,
+        ).model_dump()
+        for enrollment in enrollments
+    ]
 
 @router.post("/{course_id}/enroll", status_code=201)
 def enroll(course_id: str, user: User = Depends(require_roles(UserRole.student)), db: Session = Depends(get_db)):

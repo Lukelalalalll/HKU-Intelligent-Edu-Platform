@@ -30,12 +30,16 @@ export type ProfileUpdate = { name: string; email: string };
 export type PasswordChange = { current_password: string; new_password: string };
 export type CourseSemester = "semester_1" | "semester_2" | "summer";
 export type Course = { id: string; code: string; name: string; description: string; teacher_id: string; teacher_name: string; enrolled_count: number; academic_year_start: number; semester: CourseSemester; timezone: string; schedules: { weekday: number; start_time: string; end_time: string; room: string; timezone?: string | null }[] };
+export type Participant = { id: string; name: string; email: string; username?: string; avatar_url?: string | null; enrolled_at?: string };
 export type LiveClassSchedule = { meeting_id: string; schedule_id: string; weekday: number; start_time: string; end_time: string; timezone: string; status: string; meeting_number: string; next_start: string | null; next_end: string | null; can_join: boolean; can_start: boolean };
 export type LiveClass = { course_id: string; course_name: string; teacher_name: string; timezone: string; schedules: LiveClassSchedule[]; provisioning_required: boolean; status: string };
 export type LiveClassAuthorization = { meeting_number: string; sdk_jwt: string; sdk_key: string; zak: string | null; user_name: string; role: number; expires_at: string; join_url: string };
 export type Assignment = { id: string; course_id: string; title: string; description: string; due_at: string | null; max_score: number; status: string; course_name?: string; pending_count?: number };
 export type TeacherSchedule = { course_id: string; course_code: string; course_name: string; weekday: number; start_time: string; end_time: string; room: string };
 export type TeacherDashboardData = { courses: Course[]; schedule: TeacherSchedule[]; pending_assignments: Assignment[] };
+export type StudentSchedule = { course_id: string; course_code: string; course_name: string; teacher_name: string; weekday: number; start_time: string; end_time: string; room: string; timezone?: string | null };
+export type StudentAssignmentReminder = { id: string; course_id: string; course_name: string; title: string; due_at: string | null; max_score: number; submission_status: "not_started" | "submitted" | "graded" | "overdue"; submitted_at: string | null; score: number | null };
+export type StudentDashboardData = { timezone: string; courses: Course[]; schedule: StudentSchedule[]; assignment_reminders: StudentAssignmentReminder[] };
 export type AgentMessage = { id: string; conversation_id: string; role: "user" | "assistant"; content: string; citations: unknown[] | Record<string, unknown>; model: string | null; created_at: string };
 export type AgentConversation = { id: string; title: string; rag_mode: string; created_at: string; messages?: AgentMessage[] };
 
@@ -97,6 +101,12 @@ export const liveClassApi = {
   get: (courseId: string) => api.get<LiveClass>(`/courses/${courseId}/live-class`),
   provision: (courseId: string) => api.post<LiveClass>(`/courses/${courseId}/live-class/provision`),
   authorize: (courseId: string, action: "start" | "join", meetingId?: string) => api.post<LiveClassAuthorization>(`/courses/${courseId}/live-class/authorize`, { action, meeting_id: meetingId }),
+};
+export const participantApi = {
+  list: (courseId: string) => api.get<Participant[]>(`/courses/${courseId}/participants`),
+};
+export const studentApi = {
+  dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),
 };
 export const pptApi = {
   projects: () => api.get<{ items: PptProject[] }>("/ppt/projects"),

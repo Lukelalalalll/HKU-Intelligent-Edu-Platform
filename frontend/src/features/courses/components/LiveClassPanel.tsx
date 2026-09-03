@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { liveClassApi, type Course, type LiveClass, type LiveClassSchedule } from "../../../api";
+import { liveClassApi, participantApi, type Course, type LiveClass, type LiveClassSchedule, type Participant } from "../../../api";
 import { useAuth } from "../../../store";
 import { SEMESTER_LABELS } from "../courseTerms";
 import styles from "../styles/CoursesRoute.module.css";
 
 const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const formatTime = (value: string | null) => value ? new Intl.DateTimeFormat("zh-CN", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "暂无下一课次";
-const sidebarItems = ["Home", "Announcements", "Files", "Assignments", "Discussions", "Grades", "People", "Pages", "Syllabus", "Library Resources", "Zoom", "Class List (AIMS)", "Course Analytics", "Panopto Recordings"];
+const sidebarItems = ["Home", "Announcements", "Files", "Assignments", "Discussions", "Grades", "Participant", "Syllabus", "Library Resources", "Zoom", "Panopto Recordings"];
 const zoomTabs = [
   { id: "upcoming", label: "Upcoming Meetings" },
   { id: "previous", label: "Previous Meetings" },
@@ -24,9 +24,18 @@ export default function LiveClassPanel({ courseId, course }: { courseId: string;
   const [provisioning, setProvisioning] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof zoomTabs)[number]["id"]>("upcoming");
   const [activeModule, setActiveModule] = useState("Zoom");
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsError, setParticipantsError] = useState(false);
 
   const load = useCallback(() => liveClassApi.get(courseId).then((response) => setLiveClass(response.data)).catch(() => undefined).finally(() => setLoading(false)), [courseId]);
   useEffect(() => { load(); const timer = window.setInterval(load, 30000); return () => window.clearInterval(timer); }, [load]);
+  useEffect(() => {
+    if (activeModule !== "Participant") return;
+    setParticipantsLoading(true);
+    setParticipantsError(false);
+    participantApi.list(courseId).then((response) => setParticipants(response.data)).catch(() => setParticipantsError(true)).finally(() => setParticipantsLoading(false));
+  }, [activeModule, courseId]);
 
   const provision = async () => {
     setProvisioning(true);
@@ -44,10 +53,10 @@ export default function LiveClassPanel({ courseId, course }: { courseId: string;
       <div className={styles.zoomSidebarBrand}><span className={styles.zoomSidebarMenu}><i className="fas fa-bars" /></span><div><strong>{course?.code || "COURSE"}</strong><small>{course?.name || "Zoom workspace"}</small></div></div>
       <div className={styles.zoomSidebarTerm}>{termLabel}</div>
       <nav className={styles.zoomCourseNav} aria-label="课程导航">
-        {sidebarItems.map((item) => <a href="#" key={item} className={activeModule === item ? styles.zoomCourseNavActive : ""} aria-current={activeModule === item ? "page" : undefined} onClick={(event) => { event.preventDefault(); setActiveModule(item); }}><i className={`fas ${item === "Zoom" ? "fa-video" : item === "Home" ? "fa-house" : "fa-circle-dot"}`} />{item}</a>)}
+        {sidebarItems.map((item) => <a href="#" key={item} className={activeModule === item ? styles.zoomCourseNavActive : ""} aria-current={activeModule === item ? "page" : undefined} onClick={(event) => { event.preventDefault(); setActiveModule(item); }}><i className={`fas ${item === "Zoom" ? "fa-video" : item === "Home" ? "fa-house" : item === "Participant" ? "fa-user-group" : "fa-circle-dot"}`} />{item}</a>)}
       </nav>
     </aside>
-    <div className={`${styles.zoomMain} ${activeModule === "Zoom" ? styles.zoomMainZoom : styles.zoomMainHku}`}>
+    <div className={`${styles.zoomMain} ${activeModule === "Zoom" ? styles.zoomMainZoom : styles.zoomMainHku} ${activeModule === "Participant" ? styles.zoomMainParticipant : ""}`}>
       {activeModule === "Zoom" ? <>
         <header className={styles.zoomTopbar}>
           <div className={styles.zoomWordmark}>zoom</div>
@@ -66,9 +75,24 @@ export default function LiveClassPanel({ courseId, course }: { courseId: string;
         {liveClass.provisioning_required && isTeacher && <button className="primary-action" type="button" disabled={provisioning} onClick={provision}><i className={`fas ${provisioning ? "fa-circle-notch fa-spin" : "fa-video"}`} />{provisioning ? "准备中…" : "准备 Zoom 课堂"}</button>}
         {liveClass.provisioning_required && user?.role === "student" && <div className={styles.zoomNotice}><i className="fas fa-circle-info" /> 教师尚未准备 Zoom 课堂，准备完成后即可加入。</div>}
         </div>
-      </> : <div className={styles.courseModulePlaceholder}><p className="eyebrow">COURSE MODULE</p><h2>{activeModule}</h2><p>这是课程导航预留的 HKU 工作区。选择左侧 Zoom 后可查看实时课堂和会议安排。</p></div>}
+      </> : activeModule === "Participant" ? <ParticipantModule participants={participants} loading={participantsLoading} error={participantsError} isTeacher={isTeacher} currentUserId={user?.id} /> : <div className={styles.courseModulePlaceholder}><p className="eyebrow">COURSE MODULE</p><h2>{activeModule}</h2><p>这是课程导航预留的 HKU 工作区。选择左侧 Zoom 后可查看实时课堂和会议安排。</p></div>}
     </div>
   </section>;
+}
+
+function ParticipantModule({ participants, loading, error, isTeacher, currentUserId }: { participants: Participant[]; loading: boolean; error: boolean; isTeacher: boolean; currentUserId?: string }) {
+  return <div className={styles.participantContent}>
+    <header className={styles.participantHeading}><div><p className="eyebrow">COURSE PARTICIPANTS</p><h2>Participant</h2><span>{participants.length} 名学生</span></div><i className="fas fa-user-group" /></header>
+    {loading ? <div className={styles.participantState}><i className="fas fa-circle-notch fa-spin" /><strong>正在加载学生名单…</strong></div> : error ? <div className={styles.participantState}><i className="fas fa-circle-exclamation" /><strong>暂时无法加载学生名单</strong><span>请稍后重试。</span></div> : !participants.length ? <div className={styles.participantState}><i className="fas fa-users-slash" /><strong>暂无学生</strong><span>该课程还没有选课学生。</span></div> : <div className={styles.participantGrid}>{participants.map((participant) => <ParticipantCard key={participant.id} participant={participant} detailed={isTeacher} current={participant.id === currentUserId} />)}</div>}
+  </div>;
+}
+
+function ParticipantCard({ participant, detailed, current }: { participant: Participant; detailed: boolean; current: boolean }) {
+  const initials = (participant.name || participant.username || participant.email).slice(0, 1).toUpperCase();
+  return <article className={`${styles.participantCard} ${current ? styles.participantCardCurrent : ""}`}>
+    <div className={styles.participantIdentity}>{detailed && (participant.avatar_url ? <img className={styles.participantAvatar} src={participant.avatar_url} alt="" /> : <span className={styles.participantAvatar}>{initials}</span>)}<div><strong>{participant.name || participant.email}</strong>{current && <small className={styles.participantCurrentLabel}>你</small>}</div></div>
+    <div className={styles.participantDetails}><span><i className="fas fa-envelope" />{participant.email}</span>{detailed && <><span><i className="fas fa-at" />{participant.username}</span>{participant.enrolled_at && <span><i className="fas fa-calendar-plus" />加入于 {new Date(participant.enrolled_at).toLocaleDateString("zh-CN")}</span>}</>}</div>
+  </article>;
 }
 
 function LiveScheduleRow({ schedule, topic, isTeacher, onOpen }: { schedule: LiveClassSchedule; topic: string; isTeacher: boolean; onOpen: (action: "start" | "join") => void }) {
