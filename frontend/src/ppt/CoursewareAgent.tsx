@@ -225,7 +225,6 @@ export default function CoursewareAgent() {
   const confirmOutline = async () => { if (!active) return; try { await pptApi.confirmCheckpoint(active.id, "outline_confirm"); await refresh(); setSurface("theme"); toast.success("大纲已确认，请选择主题"); } catch (e: any) { toast.error(e.response?.data?.detail || "请先生成并确认大纲"); } };
   if (!projectId) return (
     <div className="ppt-immersive-home">
-      <div className="ppt-brandline"><span>HKU</span><span>INTELLIGENT EDU · PPT STUDIO</span></div>
       <div className="ppt-home-layout">
           <div className="ppt-home-main">
             <WelcomeBanner className="ppt-home-agent-banner" eyebrow="课件 AGENT 工作台" title={<>把教学想法，<br /><em>变成一套可用的课件。</em></>} subtitle="告诉 Agent 课程目标、受众和重点，我会和你一起梳理需求、生成大纲，再逐页完善。" />
@@ -242,9 +241,9 @@ export default function CoursewareAgent() {
   );
   if (projectLoading || !active) return <div className="ppt-project-loading">正在加载课件项目…</div>;
   return <div className="ppt-immersive-shell">
-    <ProjectSidebar active={active} surface={surface} pages={pages} selected={selected} onHome={() => navigate("/teacher/courseware-agent")} onSurface={setSurface} onSelectPage={(index) => { setSelected(index); setSurface("editor"); }} />
+    <ProjectSidebar active={active} surface={surface} pages={pages} selected={selected} onSurface={setSurface} onSelectPage={(index) => { setSelected(index); setSurface("editor"); }} />
     <div className="ppt-immersive-body">
-      <header className="ppt-immersive-header"><button className="ppt-back" onClick={() => navigate("/teacher/courseware-agent")}>← 项目</button><div className="ppt-project-title"><span className="ppt-kicker">PPT STUDIO · WORKSPACE</span><strong>{active.title}</strong></div><div className="ppt-header-actions"><div className="ppt-stage-line">{["init", "outline", "theme", "layout", "design", "export"].map((stage) => <span key={stage} className={active.current_stage === stage || (["theme", "layout"].includes(stage) && !!active.theme_id) || (stage === "design" && pages.some((p) => !!p.document)) ? "active" : ""}>{stageLabels[stage]}</span>)}</div>{pages.length > 0 && <button onClick={() => setSurface("present")} className="ppt-ghost">放映</button>}<button className="ppt-primary" disabled={!pages.some((p) => !!p.document)} onClick={async () => { try { const { data } = await pptApi.export(active.id); toast.success("已开始生成 PPT 文件"); const poll = window.setInterval(async () => { try { const status = await pptApi.exportStatus(active.id, data.id); if (status.data.status === "completed") { window.clearInterval(poll); const response = await pptApi.downloadExport(active.id, data.id); const url = URL.createObjectURL(response.data); const link = document.createElement("a"); link.href = url; link.download = "courseware.pptx"; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); } else if (status.data.status === "failed") { window.clearInterval(poll); toast.error(status.data.error || "导出失败"); } } catch { /* keep polling */ } }, 1200); } catch (e: any) { toast.error(e.response?.data?.detail || "导出失败"); } }}>导出 PPT</button></div></header>
+      <header className="ppt-immersive-header"><div className="ppt-project-title"><span className="ppt-kicker">PPT STUDIO · WORKSPACE</span><strong>{active.title}</strong></div><div className="ppt-header-actions"><div className="ppt-stage-line">{["init", "outline", "theme", "layout", "design", "export"].map((stage) => <span key={stage} className={active.current_stage === stage || (["theme", "layout"].includes(stage) && !!active.theme_id) || (stage === "design" && pages.some((p) => !!p.document)) ? "active" : ""}>{stageLabels[stage]}</span>)}</div>{pages.length > 0 && <button onClick={() => setSurface("present")} className="ppt-ghost">放映</button>}<button className="ppt-primary" disabled={!pages.some((p) => !!p.document)} onClick={async () => { try { const { data } = await pptApi.export(active.id); toast.success("已开始生成 PPT 文件"); const poll = window.setInterval(async () => { try { const status = await pptApi.exportStatus(active.id, data.id); if (status.data.status === "completed") { window.clearInterval(poll); const response = await pptApi.downloadExport(active.id, data.id); const url = URL.createObjectURL(response.data); const link = document.createElement("a"); link.href = url; link.download = "courseware.pptx"; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); } else if (status.data.status === "failed") { window.clearInterval(poll); toast.error(status.data.error || "导出失败"); } } catch { /* keep polling */ } }, 1200); } catch (e: any) { toast.error(e.response?.data?.detail || "导出失败"); } }}>导出 PPT</button></div></header>
       {surface === "start" && <div className="ppt-start-grid"><Chat project={active} messages={messages.filter((m) => !m.page_id)} requirement={requirement} sources={sources} onRequirementUpdate={(response) => setRequirement((current) => ({ ...(current || {}), ...response }))} onUpload={(files) => void uploadFiles(files)} onSent={() => void refresh()} /><section className={`ppt-start-brief ${requirement?.brief_summary ? "is-ready" : ""}`}><span className="ppt-kicker">PROJECT BRIEF</span><h2>{requirement?.brief_summary ? "你的课件需求摘要" : "我们先把问题说清楚"}</h2><p>{requirement?.brief_summary || active.request_text}</p><div className="ppt-brief-points"><div><b>01</b><span>{requirement?.answers?.audience || "受众待确认"}</span></div><div><b>02</b><span>{requirement?.answers?.goals || "教学目标待确认"}</span></div><div><b>03</b><span>{requirement?.answers?.duration || requirement?.answers?.slide_count || "课堂节奏待确认"}</span></div></div>{requirement?.suggested_additions?.length ? <p className="ppt-extra-hint">还可以补充：{requirement.suggested_additions.join("、")}</p> : null}<button className="ppt-primary wide" onClick={() => void generateOutline()} disabled={loading || !requirement?.ready_to_outline}>{loading ? "正在生成大纲…" : requirement?.ready_to_outline ? "生成我的大纲 →" : "完成需求对话后生成大纲"}</button></section></div>}
       {surface === "outline" && <div className="ppt-workspace-grid">{outlineGenerating ? <section className="ppt-outline-generating"><div className="ppt-layouting-orb">✦</div><span className="ppt-kicker">OUTLINE ENGINE</span><h2>正在把对话整理成教学主线</h2><p>正在提炼章节、页面职责与课堂节奏…</p><div className="ppt-outline-loading-bar"><i /></div></section> : <OutlineBoard pages={pages} onSelect={(item) => { setSelected(pages.findIndex((p) => p.id === item.id)); }} onReorder={(ids) => { void pptApi.patchStoryboard(active.id, ids).then(() => refresh()); }} onConfirm={() => void confirmOutline()} />}<Chat project={active} page={page} messages={messages.filter((m) => !m.page_id || m.page_id === page?.id)} onSent={() => void refresh()} /></div>}
       {surface === "theme" && <ThemeStep themes={themes} selected={active.theme_id} onSelect={async (themeId) => { if (loading) return; try { const { data } = await pptApi.selectTheme(active.id, themeId); setActive(data); await generateDesign(); } catch (e: any) { setLayoutError(e.response?.data?.detail || "主题保存失败"); setSurface("layouting"); } }} disabled={loading} />}
@@ -255,9 +254,54 @@ export default function CoursewareAgent() {
   </div>;
 }
 
-function ProjectSidebar({ active, surface, pages, selected, onHome, onSurface, onSelectPage }: { active: PptProject; surface: Surface; pages: PptPage[]; selected: number; onHome: () => void; onSurface: (surface: Surface) => void; onSelectPage: (index: number) => void }) {
-  return <aside className="ppt-project-sidebar"><button className="ppt-sidebar-back" onClick={onHome}>‹ 所有项目</button><div className="ppt-sidebar-brand"><span>HKU</span><div><b>课件 Studio</b><small>PROJECT WORKSPACE</small></div></div><div className="ppt-sidebar-project"><span className="ppt-kicker">当前项目</span><strong>{active.title}</strong><small>{active.page_count || 0} 页 · {stageLabels[active.current_stage] || "进行中"}</small></div><nav className="ppt-project-nav"><button className={surface === "start" ? "active" : ""} onClick={() => onSurface("start")}>✦ 对话与需求</button><button className={surface === "outline" ? "active" : ""} onClick={() => onSurface("outline")} disabled={!pages.length}>▦ 故事板大纲</button><button className={surface === "theme" ? "active" : ""} onClick={() => onSurface("theme")} disabled={!pages.length}>◉ 选择主题</button><button className={surface === "editor" ? "active" : ""} onClick={() => onSurface("editor")} disabled={!pages.some((item) => !!item.document)}>◈ 预览编辑</button></nav>{pages.length > 0 && surface !== "editor" && <div className="ppt-sidebar-pages"><div><span>页面</span><small>{pages.length} 张</small></div>{pages.map((item, index) => <button key={item.id} className={selected === index ? "active" : ""} onClick={() => onSelectPage(index)}><span>{String(index + 1).padStart(2, "0")}</span><b>{item.title || "未命名页面"}</b></button>)}</div>}<div className="ppt-sidebar-footer">对话驱动 · 所见即所得</div></aside>;
+function ProjectSidebar({ active, surface, pages, selected, onSurface, onSelectPage }: { active: PptProject; surface: Surface; pages: PptPage[]; selected: number; onSurface: (surface: Surface) => void; onSelectPage: (index: number) => void }) {
+  return <aside className="ppt-project-sidebar"><div className="ppt-sidebar-brand"><span>HKU</span><div><b>课件 Studio</b><small>PROJECT WORKSPACE</small></div></div><div className="ppt-sidebar-project"><span className="ppt-kicker">当前项目</span><strong>{active.title}</strong><small>{active.page_count || 0} 页 · {stageLabels[active.current_stage] || "进行中"}</small></div><nav className="ppt-project-nav"><button className={surface === "start" ? "active" : ""} onClick={() => onSurface("start")}>✦ 对话与需求</button><button className={surface === "outline" ? "active" : ""} onClick={() => onSurface("outline")} disabled={!pages.length}>▦ 故事板大纲</button><button className={surface === "theme" ? "active" : ""} onClick={() => onSurface("theme")} disabled={!pages.length}>◉ 选择主题</button><button className={surface === "editor" ? "active" : ""} onClick={() => onSurface("editor")} disabled={!pages.some((item) => !!item.document)}>◈ 预览编辑</button></nav>{pages.length > 0 && surface !== "editor" && <div className="ppt-sidebar-pages"><div><span>页面</span><small>{pages.length} 张</small></div>{pages.map((item, index) => <button key={item.id} className={selected === index ? "active" : ""} onClick={() => onSelectPage(index)}><span>{String(index + 1).padStart(2, "0")}</span><b>{item.title || "未命名页面"}</b></button>)}</div>}<div className="ppt-sidebar-footer">对话驱动 · 所见即所得</div></aside>;
 }
 
 function Composer({ onCreate, loading }: { onCreate: (text: string, files: File[]) => void; loading: boolean }) { const [text, setText] = useState(""); const [files, setFiles] = useState<File[]>([]); return <div className="ppt-home-composer"><textarea value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onCreate(text, files); } }} placeholder="告诉 Agent 你想讲什么，例如：为大一学生设计一节 50 分钟的可持续设计课程" rows={3} /><div className={`ppt-home-files ${files.length ? "has-files" : ""}`}>{files.length ? files.map((file) => <span key={`${file.name}-${file.lastModified}`}>📎 {file.name}<button type="button" onClick={() => setFiles((items) => items.filter((item) => item !== file))}>×</button></span>) : <span className="ppt-home-files-placeholder"><i className="fas fa-paperclip" /> 可添加 PDF、Markdown 或图片作为 Agent 的参考资料</span>}</div><div><label className="ppt-upload-button">＋ 添加资料<input type="file" multiple accept=".pdf,.md,.markdown,image/png,image/jpeg,image/webp" onChange={(e) => setFiles((items) => [...items, ...Array.from(e.target.files || [])])} /></label><small>Enter 发送 · Shift + Enter 换行</small><button onClick={() => onCreate(text, files)} disabled={loading || !text.trim()}>{loading ? "创建中…" : "开始创建 →"}</button></div></div>; }
-function Presentation({ pages, index, onIndexChange, onClose }: { pages: PptPage[]; index: number; onIndexChange: (index: number) => void; onClose: () => void }) { const page = pages[index]; return <div className="ppt-presentation"><button className="ppt-presentation-close" onClick={onClose}>×</button><div className="ppt-presentation-title"><span>放映预览</span><strong>{page.title}</strong></div><div className="ppt-presentation-stage"><button onClick={() => onIndexChange(Math.max(0, index - 1))}>‹</button><div className="ppt-rendered-slide"><div className="ppt-present-scale"><SlideRenderer document={editableDocument(page)} /></div></div><button onClick={() => onIndexChange(Math.min(pages.length - 1, index + 1))}>›</button></div><div className="ppt-presentation-footer">{index + 1} / {pages.length}<span>← → 切换 · Esc 退出</span></div></div>; }
+function Presentation({ pages, index, onIndexChange, onClose }: { pages: PptPage[]; index: number; onIndexChange: (index: number) => void; onClose: () => void }) {
+  const page = pages[index];
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const updateScale = () => {
+      // Reserve room for the navigation buttons and their gaps, then fit the
+      // 1280x720 slide into the remaining area in both dimensions.
+      const availableWidth = Math.max(0, stage.clientWidth - 132);
+      const availableHeight = Math.max(0, stage.clientHeight - 8);
+      setScale(Math.min(1, availableWidth / SLIDE_WIDTH, availableHeight / SLIDE_HEIGHT));
+    };
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(stage);
+    updateScale();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft") onIndexChange(Math.max(0, index - 1));
+      if (event.key === "ArrowRight") onIndexChange(Math.min(pages.length - 1, index + 1));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [index, onClose, onIndexChange, pages.length]);
+
+  const slideWidth = SLIDE_WIDTH * scale;
+  const slideHeight = SLIDE_HEIGHT * scale;
+  return <div className="ppt-presentation">
+    <button className="ppt-presentation-close" onClick={onClose} aria-label="退出放映">×</button>
+    <div className="ppt-presentation-title"><span>放映预览</span><strong>{page.title}</strong></div>
+    <div className="ppt-presentation-stage" ref={stageRef}>
+      <button aria-label="上一页" disabled={index === 0} onClick={() => onIndexChange(Math.max(0, index - 1))}>‹</button>
+      <div className="ppt-rendered-slide" style={{ width: slideWidth, height: slideHeight }}>
+        <div className="ppt-present-scale" style={{ width: SLIDE_WIDTH, height: SLIDE_HEIGHT, transform: `scale(${scale})` }}><SlideRenderer document={editableDocument(page)} /></div>
+      </div>
+      <button aria-label="下一页" disabled={index === pages.length - 1} onClick={() => onIndexChange(Math.min(pages.length - 1, index + 1))}>›</button>
+    </div>
+    <div className="ppt-presentation-footer">{index + 1} / {pages.length}<span>← → 切换 · Esc 退出</span></div>
+  </div>;
+}

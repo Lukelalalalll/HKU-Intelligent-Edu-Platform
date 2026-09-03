@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams, useParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { liveClassApi, type LiveClassAuthorization } from "../../../api";
 import { useAuth } from "../../../store";
@@ -35,6 +35,6 @@ export default function LiveClassRoute() {
     return () => { cancelled = true; };
   }, [auth]);
 
-  if (error) return <div className="placeholder-page"><i className="fas fa-triangle-exclamation placeholder-icon" /><h1>无法进入课堂</h1><p>{error}</p><Link className="primary-action" to={`/courses/${courseId}`}>返回课程</Link></div>;
+  if (error) return <div className="placeholder-page"><i className="fas fa-triangle-exclamation placeholder-icon" /><h1>无法进入课堂</h1><p>{error}</p></div>;
   return <div className="live-class-page"><header><div><p className="eyebrow">ZOOM LIVE CLASS</p><h1>{sdkReady ? "课堂进行中" : "正在连接课堂…"}</h1></div><button className="secondary-action" type="button" onClick={() => navigate(`/courses/${courseId}`)}>退出课堂</button></header><div id="zmmtg-root" ref={containerRef} className="zoom-sdk-container" aria-label="Zoom 实时课堂" /></div>;
 }

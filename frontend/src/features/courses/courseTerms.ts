@@ -42,3 +42,8 @@ export function formatDateRange(range: { start: Date; end: Date }) {
   const formatter = new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' });
   return `${formatter.format(range.start)} – ${formatter.format(range.end)}`;
 }
+
+export function formatCourseLocations(schedules: Course['schedules']) {
+  const locations = [...new Set(schedules.map((schedule) => schedule.room.trim()).filter(Boolean))];
+  return locations.length ? locations.join('、') : '待定教室';
+}

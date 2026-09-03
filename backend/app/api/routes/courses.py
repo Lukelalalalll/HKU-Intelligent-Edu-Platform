@@ -24,10 +24,10 @@ def list_courses(user: User = Depends(current_user), db: Session = Depends(get_d
 
 @router.post("", response_model=CourseOut, status_code=201)
 def create_course(payload: CourseCreate, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
-    if db.scalar(select(Course).where(Course.code == payload.code.strip().upper())):
+    if db.scalar(select(Course).where(Course.code == payload.code)):
         raise HTTPException(status_code=409, detail="Course code already exists")
     course = Course(
-        code=payload.code.strip().upper(),
+        code=payload.code,
         name=payload.name,
         description=payload.description,
         teacher_id=user.id,

@@ -19,10 +19,14 @@ def seed():
         teacher = get_or_create_user(db, "demo_teacher", "demo_teacher@example.test", "Demo Teacher", UserRole.teacher)
         get_or_create_user(db, "demo_admin", "demo_admin@example.test", "Demo Admin", UserRole.admin)
         demo_courses = [
-            ("HKU-AI-101", "AI-Supported Learning", "Design learning experiences with responsible AI.", 2025, "summer", 2, "10:00", "12:00", "CPD-LG.09"),
-            ("HKU-EDU-201", "Learning Analytics Studio", "Read learner signals and turn them into action.", 2025, "semester_2", 4, "14:00", "16:00", "MB-201"),
-            ("HKU-DES-110", "Digital Learning Design", "A studio course for clear, inclusive online teaching.", 2025, "semester_1", 1, "09:00", "11:00", "Run Run Shaw Tower"),
-            ("HKU-EDU-305", "Assessment for Learning", "Build feedback loops that help every learner progress.", 2024, "semester_2", 3, "13:00", "15:00", "MB-301"),
+            ("COMP2119", "AI-Supported Learning", "Design learning experiences with responsible AI.", 2025, "summer", 2, "10:00", "12:00", "CPD-LG.09"),
+            ("EDUC2204", "Learning Analytics Studio", "Read learner signals and turn them into action.", 2025, "semester_2", 4, "14:00", "16:00", "MB-201"),
+            ("DESI3110", "Digital Learning Design", "A studio course for clear, inclusive online teaching.", 2025, "semester_1", 1, "09:00", "11:00", "Run Run Shaw Tower"),
+            ("EDUC3305", "Assessment for Learning", "Build feedback loops that help every learner progress.", 2024, "semester_2", 3, "13:00", "15:00", "MB-301"),
+            ("ELEC2346", "Interactive Media for Teaching", "Prototype engaging digital learning experiences with media and motion.", 2026, "semester_1", 2, "09:00", "11:00", "Run Run Shaw Tower"),
+            ("STAT2608", "Evidence-Based Education", "Use practical statistics to interpret educational evidence.", 2026, "semester_1", 4, "11:00", "13:00", "MB-202"),
+            ("INFO3127", "Learning Technologies Studio", "Evaluate and design technology-enhanced learning activities.", 2026, "semester_2", 5, "15:00", "17:00", "CPD-LG.12"),
+            ("PSYC2403", "Learner Motivation and Growth", "Explore the psychology of motivation, belonging and learner persistence.", 2026, "summer", 3, "13:00", "15:00", "MB-305"),
         ]
         for code, name, description, year, semester, weekday, start_time, end_time, room in demo_courses:
             course = db.scalar(select(Course).where(Course.code == code))

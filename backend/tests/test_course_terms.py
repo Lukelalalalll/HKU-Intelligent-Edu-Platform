@@ -26,3 +26,14 @@ def test_academic_year_and_ranges():
 def test_course_payload_requires_a_valid_semester():
     with pytest.raises(ValueError):
         CourseCreate(code="HKU-101", name="Demo", academic_year_start=2026, semester="winter")
+
+
+def test_course_code_is_normalized_to_uppercase():
+    payload = CourseCreate(code=" comp2119 ", name="Demo", academic_year_start=2026, semester="semester_1")
+    assert payload.code == "COMP2119"
+
+
+@pytest.mark.parametrize("code", ["ABC1234", "COMP-2119", "COMP211", "COMP21A9", "中文2119"])
+def test_course_code_requires_four_letters_and_four_digits(code):
+    with pytest.raises(ValueError):
+        CourseCreate(code=code, name="Demo", academic_year_start=2026, semester="semester_1")

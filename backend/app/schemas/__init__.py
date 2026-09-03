@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Role = Literal["teacher", "student", "admin"]
 CourseSemester = Literal["semester_1", "semester_2", "summer"]
@@ -48,13 +48,21 @@ class ScheduleIn(BaseModel):
     timezone: str | None = None
 
 class CourseCreate(BaseModel):
-    code: str = Field(min_length=2, max_length=40)
+    code: str = Field(min_length=1, max_length=40)
     name: str = Field(min_length=1, max_length=160)
     description: str = ""
     academic_year_start: int = Field(ge=2000, le=2100)
     semester: CourseSemester
     timezone: str = "Asia/Hong_Kong"
     schedules: list[ScheduleIn] = Field(default_factory=list)
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.isascii() or len(normalized) != 8 or not normalized[:4].isalpha() or not normalized[4:].isdigit():
+            raise ValueError("Course code must contain 4 letters followed by 4 digits")
+        return normalized.upper()
 
 class CourseOut(BaseModel):
     id: str

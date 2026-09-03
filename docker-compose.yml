@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # PostgreSQL 16 image already available in the local Docker cache.
+    # It is wire-compatible with the upstream postgres:16 image and avoids
+    # requiring a registry pull during local initialization.
+    image: pgvector/pgvector:pg16
     container_name: hku-edu-postgres
     restart: unless-stopped
     environment:
@@ -19,4 +22,3 @@ services:
 
 volumes:
   postgres_data:
-

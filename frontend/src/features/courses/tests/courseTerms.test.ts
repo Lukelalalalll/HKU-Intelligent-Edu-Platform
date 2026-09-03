@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { academicYearStartFor, getAcademicYears, semesterFor } from '../courseTerms';
+import { academicYearStartFor, formatCourseLocations, getAcademicYears, semesterFor } from '../courseTerms';
 
 describe('course term boundaries', () => {
   it('uses the three HKU-style semesters and the January preselection', () => {
@@ -25,5 +25,14 @@ describe('course term boundaries', () => {
     ] as never;
     expect(getAcademicYears(courses, new Date(2026, 8, 1))).toEqual([2026, 2025, 2024]);
   });
-});
 
+  it('formats unique scheduled locations and falls back when none are available', () => {
+    expect(formatCourseLocations([
+      { room: 'CPD-LG.09' },
+      { room: ' MB-201 ' },
+      { room: 'CPD-LG.09' },
+      { room: '' },
+    ] as never)).toBe('CPD-LG.09、MB-201');
+    expect(formatCourseLocations([{ room: ' ' }] as never)).toBe('待定教室');
+  });
+});

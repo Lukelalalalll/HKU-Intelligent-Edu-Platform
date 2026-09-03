@@ -9,6 +9,8 @@ import CoursesRoute from "./features/courses/routes/CoursesRoute";
 import CourseDetailRoute from "./features/courses/routes/CourseDetailRoute";
 import LiveClassRoute from "./features/courses/routes/LiveClassRoute";
 import ProfileRoute from "./features/profile/routes/ProfileRoute";
+import WorkspaceSidebar, { readSidebarCollapsed, SidebarItem, writeSidebarCollapsed } from "./shared/components/WorkspaceSidebar";
+import Breadcrumbs from "./shared/components/Breadcrumbs";
 
 const demoAccounts = [
   { label: "学生演示", username: "demo_student" },
@@ -28,9 +30,12 @@ function SiteHeader() {
   return (
     <header className="site-header">
       <div className="site-header-inner">
-        <Link className="site-logo" to={user ? (user.role === "teacher" ? "/teacher" : "/") : "/login"} aria-label="HKU Intelligent Education Platform">
-          <img src={logoImg} alt="The University of Hong Kong" />
-        </Link>
+        <div className="site-header-leading">
+          <Link className="site-logo" to={user ? (user.role === "teacher" ? "/teacher" : "/") : "/login"} aria-label="HKU Intelligent Education Platform">
+            <img src={logoImg} alt="The University of Hong Kong" />
+          </Link>
+          {user && <Breadcrumbs />}
+        </div>
 
         <nav className="site-nav" aria-label="主导航">
           {user ? (
@@ -285,33 +290,24 @@ function AuthPage({ mode }: { mode: "login" | "register" }) {
 
 function Shell() {
   const { user } = useAuth();
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => (
-    typeof window !== "undefined" && window.localStorage.getItem("hku-sidebar-collapsed") === "1"
-  ));
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(readSidebarCollapsed);
   const toggleSidebar = () => setSidebarCollapsed((collapsed) => {
     const next = !collapsed;
-    window.localStorage.setItem("hku-sidebar-collapsed", next ? "1" : "0");
+    writeSidebarCollapsed(next);
     return next;
   });
-  const links: { to: string; label: string; roles: Role[] }[] = [
-    { to: user?.role === "teacher" ? "/teacher" : "/", label: user?.role === "teacher" ? "总览" : "总览", roles: ["teacher", "student", "admin"] },
-    { to: "/courses", label: user?.role === "teacher" ? "我的课程" : "课程", roles: ["teacher", "student", "admin"] },
-    { to: "/assignments", label: "作业", roles: ["teacher", "student"] },
-    { to: "/teacher/courseware-agent", label: "课件 Agent", roles: ["teacher"] },
-    { to: "/admin", label: "管理后台", roles: ["admin"] },
+  const links: SidebarItem[] = [
+    { to: user?.role === "teacher" ? "/teacher" : "/", label: "总览", roles: ["teacher", "student", "admin"], icon: "overview" },
+    { to: "/courses", label: user?.role === "teacher" ? "我的课程" : "课程", roles: ["teacher", "student", "admin"], icon: "courses" },
+    { to: "/assignments", label: "作业", roles: ["teacher", "student"], icon: "assignments" },
+    { to: "/teacher/courseware-agent", label: "课件 Agent", roles: ["teacher"], icon: "courseware" },
+    { to: "/admin", label: "管理后台", roles: ["admin"], icon: "admin" },
   ];
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <SiteHeader />
-      <aside className="workspace-sidebar">
-        <button className="sidebar-toggle" type="button" onClick={toggleSidebar} aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}>
-          <i className={`fas ${sidebarCollapsed ? "fa-angles-right" : "fa-angles-left"}`} aria-hidden="true" />
-          <span className="nav-label">{sidebarCollapsed ? "展开侧栏" : "收起侧栏"}</span>
-        </button>
-        <nav className="sidebar-nav" aria-label="工作台导航">{links.filter((link) => user && link.roles.includes(user.role)).map((link) => <NavLink key={link.to} to={link.to} end={link.to === "/" || link.to === "/teacher"} title={link.label}><i className={`fas ${link.label === "课件 Agent" ? "fa-robot" : link.label === "我的课程" || link.label === "课程" ? "fa-book-open" : link.label === "作业" ? "fa-clipboard-check" : link.label === "管理后台" ? "fa-shield-halved" : "fa-chart-line"}`} aria-hidden="true" /><span className="nav-label">{link.label}</span></NavLink>)}</nav>
-        <div className="sidebar-footer"><NavLink to="/profile" end title="个人资料"><i className="fas fa-user-gear" aria-hidden="true" /><span className="nav-label">个人资料</span></NavLink></div>
-      </aside>
+      <WorkspaceSidebar userRole={user?.role} links={links} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
       <div className="content"><Outlet /></div>
     </div>
   );
@@ -370,7 +366,7 @@ function GradingPlaceholder() {
   const { assignmentId } = useParams();
   const { user } = useAuth();
   if (user?.role !== "teacher") return <Navigate to="/assignments" replace />;
-  return <div className="placeholder-page"><i className="fas fa-file-pen placeholder-icon" /><p className="eyebrow">GRADING WORKSPACE</p><h1>作业批改工作台</h1><p>作业 {assignmentId} 的批改界面正在准备中。</p><Link className="primary-action" to="/courses">返回课程</Link></div>;
+  return <div className="placeholder-page"><i className="fas fa-file-pen placeholder-icon" /><p className="eyebrow">GRADING WORKSPACE</p><h1>作业批改工作台</h1><p>作业 {assignmentId} 的批改界面正在准备中。</p></div>;
 }
 
 function CoursewareAgent() {
