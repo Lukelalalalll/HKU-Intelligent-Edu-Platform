@@ -41,6 +41,7 @@ export type SlideRendererProps = {
   editable?: boolean;
   className?: string;
   onSelect?: (element: PptSlideElement) => void;
+  onBackgroundPointerDown?: () => void;
   onPointerDown?: (event: React.PointerEvent<HTMLDivElement>, element: PptSlideElement) => void;
   onTextBlur?: (element: PptSlideElement, text: string) => void;
   onResizeStart?: (event: React.PointerEvent<HTMLButtonElement>, element: PptSlideElement) => void;
@@ -54,12 +55,13 @@ export function SlideRenderer({
   editable = false,
   className = "",
   onSelect,
+  onBackgroundPointerDown,
   onPointerDown,
   onTextBlur,
   onResizeStart,
 }: SlideRendererProps) {
   return (
-    <div className={`ppt-slide-renderer ${className}`} style={{ background: themeBackground(document) }}>
+    <div className={`ppt-slide-renderer ${className}`} style={{ background: themeBackground(document) }} onPointerDown={() => onBackgroundPointerDown?.()}>
       {document.elements.map((element) => {
         const type = String(element.type || "body").toLowerCase();
         const raw = element as PptSlideElement & Record<string, any>;

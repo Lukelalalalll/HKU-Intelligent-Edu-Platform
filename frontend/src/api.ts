@@ -84,6 +84,7 @@ export type PptSlideElement = {
 };
 export type PptCanvasSpec = { width: 1280; height: 720 };
 export type PptDocument = { version?: 2; canvas?: PptCanvasSpec; layout?: string; theme?: Record<string, any>; elements: PptSlideElement[]; speaker_notes?: string };
+export type PptPagePatch = { title: string; bullets: string[]; section_title?: string; speaker_notes?: string };
 export type PptPage = { id: string; project_id: string; section_title: string; sort_order: number; title: string; bullets: string[]; statuses: Record<string, string>; search_queries: { query_text: string; query_purpose?: string }[]; summary_md: string; citations: any[]; document: PptDocument | null; document_revision?: number; current_document_version_id?: string | null; speaker_notes: string; page_role?: string; content_plan?: Record<string, any>; visual_plan?: Record<string, any>; preview_url?: string | null; layout_id?: string | null };
 export type PptGenerationJob = { id: string; project_id: string; status: string; stage: string; total_pages: number; completed_pages: number; failed_pages: number; current_page_id?: string | null; error_message?: string | null };
 export type PptMessage = { id: string; role: "user" | "assistant"; stage: string; scope_type: string; page_id?: string | null; content_md: string; payload?: Record<string, any>; created_at: string };
@@ -155,7 +156,7 @@ export const pptApi = {
   cancelGeneration: (id: string, jobId: string) => api.post<PptGenerationJob>(`/ppt/projects/${id}/generation-jobs/${jobId}:cancel`),
   pages: (id: string) => api.get<{ items: PptPage[] }>(`/ppt/projects/${id}/pages`),
   page: (id: string, pageId: string) => api.get<PptPage>(`/ppt/projects/${id}/pages/${pageId}`),
-  patchPage: (id: string, pageId: string, payload: any) => api.patch<PptPage>(`/ppt/projects/${id}/pages/${pageId}`, payload),
+  patchPage: (id: string, pageId: string, payload: PptPagePatch) => api.patch<PptPage>(`/ppt/projects/${id}/pages/${pageId}`, payload),
   action: (id: string, pageId: string, action_type: string) => api.post(`/ppt/projects/${id}/pages/${pageId}/actions`, { action_type }),
   batch: (id: string, action_type: string) => api.post(`/ppt/projects/${id}/actions/batch`, { action_type }),
   upload: (id: string, file: File, pageId?: string) => { const form = new FormData(); form.append("file", file); return api.post(`/ppt/projects/${id}/files`, form, { params: pageId ? { page_id: pageId } : undefined }); },
