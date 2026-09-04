@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { academicYearStartFor, formatCourseLocations, getAcademicYears, semesterFor } from '../courseTerms';
+import { academicYearStartFor, formatCourseLocations, formatCourseTimes, getAcademicYears, semesterFor } from '../courseTerms';
 
 describe('course term boundaries', () => {
   it('uses the three HKU-style semesters and the January preselection', () => {
@@ -34,5 +34,10 @@ describe('course term boundaries', () => {
       { room: '' },
     ] as never)).toBe('CPD-LG.09、MB-201');
     expect(formatCourseLocations([{ room: ' ' }] as never)).toBe('待定教室');
+  });
+
+  it('formats one or more scheduled course times for the detail card', () => {
+    expect(formatCourseTimes([{ weekday: 2, start_time: '10:00', end_time: '12:00' }, { weekday: 5, start_time: '14:00', end_time: '15:00' }] as never)).toBe('周二 10:00–12:00\n周五 14:00–15:00');
+    expect(formatCourseTimes([] as never)).toBe('待定');
   });
 });

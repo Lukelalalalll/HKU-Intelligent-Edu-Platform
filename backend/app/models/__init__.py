@@ -6,6 +6,8 @@ from app.models.entities import (
     Course,
     CourseSchedule,
     CourseZoomMeeting,
+    CourseChapter,
+    CourseMaterial,
     Enrollment,
     FileAsset,
     RecordingSession,
@@ -22,7 +24,7 @@ from app.models.ppt import (
 
 __all__ = [
     "User", "UserRole", "Course", "Enrollment", "CourseSchedule", "Assignment", "Submission",
-    "FileAsset", "RecordingSession", "CourseZoomMeeting", "AgentConversation", "AgentMessage", "AuditLog",
+    "FileAsset", "CourseChapter", "CourseMaterial", "RecordingSession", "CourseZoomMeeting", "AgentConversation", "AgentMessage", "AuditLog",
     "PptProject", "PptRequirement", "PptOutlineVersion", "PptPage",
     "PptSourceCollection", "PptSourceDocument", "PptSourceChunk",
     "PptAgentRun", "PptAgentEvent", "PptProviderConfig", "PptExportJob",

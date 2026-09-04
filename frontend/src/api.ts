@@ -30,6 +30,9 @@ export type ProfileUpdate = { name: string; email: string };
 export type PasswordChange = { current_password: string; new_password: string };
 export type CourseSemester = "semester_1" | "semester_2" | "summer";
 export type Course = { id: string; code: string; name: string; description: string; teacher_id: string; teacher_name: string; enrolled_count: number; academic_year_start: number; semester: CourseSemester; timezone: string; schedules: { weekday: number; start_time: string; end_time: string; room: string; timezone?: string | null }[] };
+export type MaterialKind = "lecture" | "tutorial";
+export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string };
+export type CourseChapter = { id: string; kind: MaterialKind; title: string; sort_order: number; material_count: number; materials: CourseMaterial[] };
 export type Participant = { id: string; name: string; email: string; username?: string; avatar_url?: string | null; enrolled_at?: string };
 export type LiveClassSchedule = { meeting_id: string; schedule_id: string; weekday: number; start_time: string; end_time: string; timezone: string; status: string; meeting_number: string; next_start: string | null; next_end: string | null; can_join: boolean; can_start: boolean };
 export type LiveClass = { course_id: string; course_name: string; teacher_name: string; timezone: string; schedules: LiveClassSchedule[]; provisioning_required: boolean; status: string };
@@ -104,6 +107,15 @@ export const liveClassApi = {
 };
 export const participantApi = {
   list: (courseId: string) => api.get<Participant[]>(`/courses/${courseId}/participants`),
+};
+export const courseMaterialsApi = {
+  list: (courseId: string, kind: MaterialKind) => api.get<CourseChapter[]>(`/courses/${courseId}/materials`, { params: { kind } }),
+  createChapter: (courseId: string, payload: { kind: MaterialKind; title: string }) => api.post<CourseChapter>(`/courses/${courseId}/materials/chapters`, payload),
+  updateChapter: (courseId: string, chapterId: string, payload: { title?: string; sort_order?: number }) => api.patch<CourseChapter>(`/courses/${courseId}/materials/chapters/${chapterId}`, payload),
+  deleteChapter: (courseId: string, chapterId: string) => api.delete(`/courses/${courseId}/materials/chapters/${chapterId}`),
+  upload: (courseId: string, chapterId: string, file: File, title?: string) => { const form = new FormData(); form.append("file", file); if (title) form.append("title", title); return api.post<CourseMaterial>(`/courses/${courseId}/materials/chapters/${chapterId}/files`, form); },
+  delete: (courseId: string, materialId: string) => api.delete(`/courses/${courseId}/materials/${materialId}`),
+  download: (courseId: string, materialId: string) => api.get<Blob>(`/courses/${courseId}/materials/${materialId}/download`, { responseType: "blob" }),
 };
 export const studentApi = {
   dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),

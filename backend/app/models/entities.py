@@ -58,6 +58,7 @@ class Course(Base):
     zoom_meetings: Mapped[list["CourseZoomMeeting"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     files: Mapped[list["FileAsset"]] = relationship(back_populates="course")
+    chapters: Mapped[list["CourseChapter"]] = relationship(back_populates="course", cascade="all, delete-orphan", order_by="CourseChapter.sort_order")
 
 
 class Enrollment(Base):
@@ -130,6 +131,38 @@ class FileAsset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     course: Mapped[Course | None] = relationship(back_populates="files")
+
+
+class CourseChapter(Base):
+    __tablename__ = "course_chapters"
+    __table_args__ = (
+        CheckConstraint("kind IN ('lecture', 'tutorial')", name="ck_course_chapter_kind"),
+        UniqueConstraint("course_id", "kind", "title", name="uq_course_chapter_title"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    course: Mapped[Course] = relationship(back_populates="chapters")
+    materials: Mapped[list["CourseMaterial"]] = relationship(back_populates="chapter", cascade="all, delete-orphan", order_by="CourseMaterial.created_at")
+
+
+class CourseMaterial(Base):
+    __tablename__ = "course_materials"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    chapter_id: Mapped[str] = mapped_column(ForeignKey("course_chapters.id", ondelete="CASCADE"), index=True)
+    file_asset_id: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    chapter: Mapped[CourseChapter] = relationship(back_populates="materials")
+    file_asset: Mapped[FileAsset] = relationship()
+    uploader: Mapped[User] = relationship()
 
 
 class RecordingSession(Base):

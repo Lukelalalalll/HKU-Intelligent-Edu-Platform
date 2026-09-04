@@ -47,3 +47,9 @@ export function formatCourseLocations(schedules: Course['schedules']) {
   const locations = [...new Set(schedules.map((schedule) => schedule.room.trim()).filter(Boolean))];
   return locations.length ? locations.join('、') : '待定教室';
 }
+
+export function formatCourseTimes(schedules: Course['schedules']) {
+  if (!schedules.length) return '待定';
+  const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  return schedules.map((schedule) => `${weekdays[schedule.weekday - 1] || `周${schedule.weekday}`} ${schedule.start_time}–${schedule.end_time}`).join('\n');
+}

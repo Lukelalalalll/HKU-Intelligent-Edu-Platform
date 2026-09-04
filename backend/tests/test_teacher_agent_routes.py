@@ -15,6 +15,7 @@ import app.core.security as security  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import AgentMessage, Assignment, Course, CourseSchedule, Enrollment, Submission, User, UserRole  # noqa: E402
+from app.core.config import settings  # noqa: E402
 
 
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -118,3 +119,31 @@ def test_agent_conversations_are_isolated_and_cascade_messages_on_delete():
     other_client = TestClient(app)
     login(other_client, "other")
     assert other_client.get(f"/api/agent/conversations/{conversation_id}").status_code == 404
+
+
+def test_course_materials_are_scoped_and_downloadable(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+    client = TestClient(app)
+    login(client, "teacher")
+    with TestingSession() as db:
+        course_id = db.query(Course).filter_by(code="HKU-101").one().id
+
+    chapter = client.post(f"/api/courses/{course_id}/materials/chapters", json={"kind": "lecture", "title": "Week 1"})
+    assert chapter.status_code == 201
+    chapter_id = chapter.json()["id"]
+    uploaded = client.post(f"/api/courses/{course_id}/materials/chapters/{chapter_id}/files", files={"file": ("slides.pdf", b"notes", "application/pdf")})
+    assert uploaded.status_code == 201
+    material_id = uploaded.json()["id"]
+
+    student = TestClient(app)
+    login(student, "student")
+    listed = student.get(f"/api/courses/{course_id}/materials", params={"kind": "lecture"})
+    assert listed.status_code == 200
+    assert listed.json()[0]["materials"][0]["file_name"] == "slides.pdf"
+    assert student.get(f"/api/courses/{course_id}/materials/{material_id}/download").content == b"notes"
+
+    other = TestClient(app)
+    login(other, "other")
+    assert other.get(f"/api/courses/{course_id}/materials", params={"kind": "lecture"}).status_code == 403
+    assert client.delete(f"/api/courses/{course_id}/materials/chapters/{chapter_id}").status_code == 200
+    assert not list(tmp_path.iterdir())

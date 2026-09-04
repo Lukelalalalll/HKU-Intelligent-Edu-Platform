@@ -77,6 +77,39 @@ class CourseOut(BaseModel):
     enrolled_count: int
     schedules: list[ScheduleIn]
 
+
+MaterialKind = Literal["lecture", "tutorial"]
+
+
+class CourseChapterCreate(BaseModel):
+    kind: MaterialKind
+    title: str = Field(min_length=1, max_length=200)
+
+
+class CourseChapterUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    sort_order: int | None = Field(default=None, ge=0)
+
+
+class CourseMaterialOut(BaseModel):
+    id: str
+    title: str
+    file_name: str
+    mime_type: str
+    extension: str
+    size_bytes: int
+    uploaded_at: datetime
+    download_url: str
+
+
+class CourseChapterOut(BaseModel):
+    id: str
+    kind: MaterialKind
+    title: str
+    sort_order: int
+    material_count: int
+    materials: list[CourseMaterialOut]
+
 class ParticipantSummaryOut(BaseModel):
     id: str
     name: str

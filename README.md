@@ -106,6 +106,10 @@ frontend/
 - `GET/POST /api/courses/{course_id}/assignments`
 - `POST/GET /api/courses/{course_id}/assignments/{assignment_id}/submissions`
 - `POST /api/files`
+- `GET /api/courses/{course_id}/materials?kind=lecture|tutorial`
+- `POST/PATCH/DELETE /api/courses/{course_id}/materials/chapters...`
+- `POST/DELETE /api/courses/{course_id}/materials/.../files`
+- `GET /api/courses/{course_id}/materials/{material_id}/download`
 - `GET/POST /api/courses/{course_id}/live-class`
 - `POST /api/courses/{course_id}/live-class/provision`
 - `POST /api/courses/{course_id}/live-class/authorize`

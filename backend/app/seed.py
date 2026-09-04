@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.db.session import Base, SessionLocal, engine
-from app.models import Assignment, Course, CourseSchedule, Enrollment, User, UserRole
+from app.models import Assignment, Course, CourseChapter, CourseSchedule, Enrollment, User, UserRole
 
 def get_or_create_user(db, username: str, email: str, name: str, role: UserRole):
     user = db.scalar(select(User).where(User.username == username))
@@ -39,6 +39,9 @@ def seed():
                 db.add(Enrollment(course_id=course.id, student_id=student.id))
             if not db.scalar(select(Assignment).where(Assignment.course_id == course.id)):
                 db.add(Assignment(course_id=course.id, teacher_id=teacher.id, title=f"{name} Reflection", description="Write a short reflection on this week's learning.", max_score=100))
+            for kind, title in (("lecture", "Course Lectures"), ("tutorial", "Tutorial Materials")):
+                if not db.scalar(select(CourseChapter).where(CourseChapter.course_id == course.id, CourseChapter.kind == kind)):
+                    db.add(CourseChapter(course_id=course.id, kind=kind, title=title, sort_order=0))
         db.commit()
         print("Seed complete: demo_student, demo_teacher, demo_admin / 123456")
 
