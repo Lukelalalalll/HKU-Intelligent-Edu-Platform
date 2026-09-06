@@ -74,7 +74,7 @@ class PptPage(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     title: Mapped[str] = mapped_column(String(240), default="")
     bullets_json: Mapped[list] = mapped_column(JSON, default=list)
-    statuses_json: Mapped[dict] = mapped_column(JSON, default=lambda: {k: "empty" for k in ("outline", "search", "summary", "draft", "design")})
+    statuses_json: Mapped[dict] = mapped_column(JSON, default=lambda: {k: "empty" for k in ("outline", "search", "visual", "summary", "draft", "design")})
     search_queries_json: Mapped[list] = mapped_column(JSON, default=list)
     summary_md: Mapped[str] = mapped_column(Text, default="")
     citations_json: Mapped[list] = mapped_column(JSON, default=list)

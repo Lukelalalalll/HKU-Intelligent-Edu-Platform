@@ -214,7 +214,7 @@ def _add_shape(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBC
 
 
 def _add_image(slide, element: dict[str, Any], prs) -> None:
-    source = _data_image(str(element.get("src") or ""))
+    source = _data_image(str(element.get("asset_path") or element.get("src") or ""))
     if source is None:
         return
     left, top, width, height = _geometry(element, prs)

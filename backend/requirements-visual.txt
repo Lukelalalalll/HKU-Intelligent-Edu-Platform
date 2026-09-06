@@ -1,0 +1,5 @@
+# Optional local reranking (install only when a model cache is provisioned).
+torch>=2.2
+transformers>=4.40
+faiss-cpu>=1.8
+Pillow>=10.0

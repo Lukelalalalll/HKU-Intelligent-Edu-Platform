@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-Stage = Literal["init", "outline", "search", "draft", "design", "export"]
+Stage = Literal["init", "outline", "visual", "search", "theme", "layout", "draft", "design", "export"]
 Status = Literal["empty", "ready", "running", "confirmed", "stale", "failed"]
 
 
@@ -80,6 +80,10 @@ class PagePatchIn(BaseModel):
     speaker_notes: str | None = None
 
 
+class VisualSelectionIn(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list, max_length=6)
+
+
 class DocumentPatchIn(BaseModel):
     document: dict[str, Any]
     revision: int = Field(default=1, ge=1)
@@ -111,7 +115,7 @@ class ActionIn(BaseModel):
 
 
 class BatchIn(BaseModel):
-    action_type: Literal["project_batch_search", "project_batch_summary", "project_batch_draft", "project_batch_design"]
+    action_type: Literal["project_batch_search", "project_batch_visual", "project_batch_summary", "project_batch_draft", "project_batch_design"]
 
 
 class ExportIn(BaseModel):

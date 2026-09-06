@@ -11,7 +11,7 @@ from app.api.deps import require_roles
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptProviderConfig, PptGenerationJob, User, UserRole
-from app.schemas.ppt import ActionIn, BatchIn, ExportIn, MessageIn, OutlineGenerateIn, PagePatchIn, ProjectCreateIn, ProjectPatchIn, ProviderConfigIn, RequirementPatchIn, RequirementChatIn, DocumentPatchIn, StoryboardPatchIn, CheckpointConfirmIn, ThemeSelectIn, LayoutAssignmentsIn
+from app.schemas.ppt import ActionIn, BatchIn, ExportIn, MessageIn, OutlineGenerateIn, PagePatchIn, ProjectCreateIn, ProjectPatchIn, ProviderConfigIn, RequirementPatchIn, RequirementChatIn, DocumentPatchIn, StoryboardPatchIn, CheckpointConfirmIn, ThemeSelectIn, LayoutAssignmentsIn, VisualSelectionIn
 from app.services.ppt_agent import PptAgentService, decrypt_api_key, encrypt_api_key
 from app.services.ppt_edit_agent import PptEditAgent
 from app.services.ppt_theme import get_theme, list_layouts, list_themes, render_slide_svg
@@ -177,9 +177,25 @@ def list_pages(project_id: str, service: PptAgentService = Depends(svc)):
 @router.get("/projects/{project_id}/pages/{page_id}")
 def get_page(project_id: str, page_id: str, service: PptAgentService = Depends(svc)): return service.serialize_page(service.page(project_id, page_id))
 
+
+@router.put("/projects/{project_id}/pages/{page_id}/visual-selection")
+def save_visual_selection(project_id: str, page_id: str, payload: VisualSelectionIn, service: PptAgentService = Depends(svc)):
+    return service.save_visual_selection(project_id, page_id, payload.asset_ids)
+
 @router.get("/projects/{project_id}/pages/{page_id}/preview.svg")
 def preview_page(project_id: str, page_id: str, layout_id: str | None = Query(default=None), service: PptAgentService = Depends(svc)):
     return Response(content=service.preview_svg(project_id, page_id, layout_id), media_type="image/svg+xml")
+
+
+@router.get("/projects/{project_id}/assets/{filename}")
+def page_asset(project_id: str, filename: str, service: PptAgentService = Depends(svc)):
+    """Serve downloaded visual research assets through the same auth boundary."""
+    service.project(project_id)
+    safe_name = __import__("pathlib").Path(filename).name
+    path = settings.ppt_storage_path / project_id / "assets" / safe_name
+    if not path.is_file():
+        raise HTTPException(404, "素材不存在")
+    return FileResponse(path, media_type=None, filename=safe_name)
 
 
 @router.patch("/projects/{project_id}/pages/{page_id}")
@@ -192,6 +208,14 @@ def page_action(project_id: str, page_id: str, payload: ActionIn, service: PptAg
 
 @router.post("/projects/{project_id}/actions/batch")
 def batch_action(project_id: str, payload: BatchIn, service: PptAgentService = Depends(svc)): return service.run_action(project_id, None, payload.action_type)
+
+@router.get("/projects/{project_id}/visual-jobs/{job_id}")
+def visual_job(project_id: str, job_id: str, service: PptAgentService = Depends(svc)):
+    return service.generation_job(project_id, job_id)
+
+@router.post("/projects/{project_id}/visual-jobs/{job_id}:cancel")
+def cancel_visual_job(project_id: str, job_id: str, service: PptAgentService = Depends(svc)):
+    return service.cancel_generation(project_id, job_id)
 
 
 @router.post("/projects/{project_id}/files", status_code=201)

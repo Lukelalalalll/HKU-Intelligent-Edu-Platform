@@ -6,19 +6,22 @@ from typing import Any
 
 
 THEMES: list[dict[str, Any]] = [
-    {"id": "business", "name": "Business", "description": "Classic business deck with strong hierarchy.", "family": "Business", "colors": {"bg": "#102a43", "surface": "#1f4e79", "title": "#ffffff", "body": "#d9eaf7", "accent": "#62b0e8"}},
-    {"id": "business-clean", "name": "Business Clean", "description": "Balanced spacing and practical layout for lectures.", "family": "Business", "colors": {"bg": "#f5f8fb", "surface": "#ffffff", "title": "#17324d", "body": "#486581", "accent": "#2f80ed"}},
-    {"id": "classic", "name": "Classic", "description": "Traditional classroom look with familiar structure.", "family": "Classic", "colors": {"bg": "#fffdf8", "surface": "#f4ead5", "title": "#4a3426", "body": "#6b5546", "accent": "#b7791f"}},
-    {"id": "classic-seminar", "name": "Classic Seminar", "description": "Academic tone for theory-heavy courses.", "family": "Classic", "colors": {"bg": "#f7faf9", "surface": "#e3f1ec", "title": "#173f32", "body": "#416654", "accent": "#087250"}},
-    {"id": "dark", "name": "Dark", "description": "High-contrast dark visuals for projection rooms.", "family": "Dark", "colors": {"bg": "#111827", "surface": "#1f2937", "title": "#f9fafb", "body": "#cbd5e1", "accent": "#22d3ee"}},
-    {"id": "dark-neon", "name": "Dark Neon", "description": "Bold accent dark style for modern topics.", "family": "Dark", "colors": {"bg": "#160f24", "surface": "#2b1d44", "title": "#f5f3ff", "body": "#ddd6fe", "accent": "#c084fc"}},
-    {"id": "light", "name": "Light", "description": "Bright and readable for everyday teaching.", "family": "Light", "colors": {"bg": "#ffffff", "surface": "#f1f5f9", "title": "#0f172a", "body": "#475569", "accent": "#0f766e"}},
-    {"id": "light-academic", "name": "Light Academic", "description": "Paper-like look for dense conceptual material.", "family": "Light", "colors": {"bg": "#fbfefc", "surface": "#eaf7ef", "title": "#075b42", "body": "#1d3e32", "accent": "#087250"}},
+    {"id": "business", "name": "Business", "description": "Classic business deck with strong hierarchy.", "family": "Business", "colors": {"bg": "#102a43", "surface": "#1f4e79", "title": "#ffffff", "body": "#d9eaf7", "accent": "#62b0e8"}, "tokens": {"font_family": "Aptos", "space": 4, "radius": 12, "shadow": "0 10px 24px rgba(15,23,42,.16)"}},
+    {"id": "business-clean", "name": "Business Clean", "description": "Balanced spacing and practical layout for lectures.", "family": "Business", "colors": {"bg": "#f5f8fb", "surface": "#ffffff", "title": "#17324d", "body": "#486581", "accent": "#2f80ed"}, "tokens": {"font_family": "Aptos", "space": 5, "radius": 14, "shadow": "0 8px 20px rgba(23,50,77,.10)"}},
+    {"id": "classic", "name": "Classic", "description": "Traditional classroom look with familiar structure.", "family": "Classic", "colors": {"bg": "#fffdf8", "surface": "#f4ead5", "title": "#4a3426", "body": "#6b5546", "accent": "#b7791f"}, "tokens": {"font_family": "Georgia", "space": 4, "radius": 8, "shadow": "0 6px 14px rgba(74,52,38,.12)"}},
+    {"id": "classic-seminar", "name": "Classic Seminar", "description": "Academic tone for theory-heavy courses.", "family": "Classic", "colors": {"bg": "#f7faf9", "surface": "#e3f1ec", "title": "#173f32", "body": "#416654", "accent": "#087250"}, "tokens": {"font_family": "Aptos", "space": 5, "radius": 12, "shadow": "0 8px 18px rgba(8,114,80,.12)"}},
+    {"id": "dark", "name": "Dark", "description": "High-contrast dark visuals for projection rooms.", "family": "Dark", "colors": {"bg": "#111827", "surface": "#1f2937", "title": "#f9fafb", "body": "#cbd5e1", "accent": "#22d3ee"}, "tokens": {"font_family": "Aptos", "space": 4, "radius": 12, "shadow": "0 12px 26px rgba(0,0,0,.28)"}},
+    {"id": "dark-neon", "name": "Dark Neon", "description": "Bold accent dark style for modern topics.", "family": "Dark", "colors": {"bg": "#160f24", "surface": "#2b1d44", "title": "#f5f3ff", "body": "#ddd6fe", "accent": "#c084fc"}, "tokens": {"font_family": "Aptos", "space": 4, "radius": 16, "shadow": "0 12px 28px rgba(192,132,252,.18)"}},
+    {"id": "light", "name": "Light", "description": "Bright and readable for everyday teaching.", "family": "Light", "colors": {"bg": "#ffffff", "surface": "#f1f5f9", "title": "#0f172a", "body": "#475569", "accent": "#0f766e"}, "tokens": {"font_family": "Aptos", "space": 5, "radius": 12, "shadow": "0 8px 18px rgba(15,23,42,.10)"}},
+    {"id": "light-academic", "name": "Light Academic", "description": "Paper-like look for dense conceptual material.", "family": "Light", "colors": {"bg": "#fbfefc", "surface": "#eaf7ef", "title": "#075b42", "body": "#1d3e32", "accent": "#087250"}, "tokens": {"font_family": "Aptos", "space": 5, "radius": 12, "shadow": "0 8px 18px rgba(8,114,80,.10)"}},
 ]
 
 LAYOUTS = [
     {"id": "title-content", "name": "Title and Content", "kind": "content", "capacity": "medium", "roles": ["concept", "example", "summary"]},
     {"id": "two-column", "name": "Two Column", "kind": "columns", "capacity": "high", "roles": ["compare", "process", "concept"]},
+    {"id": "image-text", "name": "Image and Text", "kind": "image-text", "capacity": "medium", "roles": ["concept", "case", "example"]},
+    {"id": "image-focus", "name": "Image Focus", "kind": "image-focus", "capacity": "low", "roles": ["cover", "case", "section"]},
+    {"id": "process-timeline", "name": "Process Timeline", "kind": "process", "capacity": "medium", "roles": ["process"]},
     {"id": "quote", "name": "Big Quote", "kind": "quote", "capacity": "low", "roles": ["quote", "takeaway"]},
     {"id": "section", "name": "Section Divider", "kind": "section", "capacity": "minimal", "roles": ["section"]},
 ]
@@ -26,16 +29,68 @@ LAYOUTS = [
 
 def get_theme(theme_id: str) -> dict[str, Any]:
     key = (theme_id or "light-academic").strip().lower()
-    return next((dict(t) for t in THEMES if t["id"] == key), dict(THEMES[-1]))
+    selected = next((dict(t) for t in THEMES if t["id"] == key), dict(THEMES[-1]))
+    base = selected.get("base_theme")
+    if base and base != selected["id"]:
+        parent = get_theme(str(base))
+        merged = dict(parent)
+        merged.update(selected)
+        merged["colors"] = {**(parent.get("colors") or {}), **(selected.get("colors") or {})}
+        merged["tokens"] = {**(parent.get("tokens") or {}), **(selected.get("tokens") or {})}
+        selected = merged
+    selected["tokens"] = {"font_family": "Aptos", "space": 4, "radius": 10, "shadow": "none", **(selected.get("tokens") or {})}
+    selected["accessibility"] = _accessibility(selected.get("colors") or {})
+    return selected
 
 
 def list_themes() -> list[dict[str, Any]]:
-    return [dict(theme, layout_count=len(LAYOUTS)) for theme in THEMES]
+    return [dict(get_theme(theme["id"]), layout_count=len(LAYOUTS)) for theme in THEMES]
 
 
 def list_layouts(theme_id: str) -> list[dict[str, Any]]:
     get_theme(theme_id)
     return [dict(layout) for layout in LAYOUTS]
+
+
+def _hex_rgb(value: Any) -> tuple[int, int, int]:
+    raw = str(value or "").strip().lstrip("#")
+    if len(raw) == 3:
+        raw = "".join(item * 2 for item in raw)
+    try:
+        return tuple(int(raw[index:index + 2], 16) for index in (0, 2, 4))
+    except (TypeError, ValueError):
+        return (255, 255, 255)
+
+
+def _luminance(value: Any) -> float:
+    channels = []
+    for channel in _hex_rgb(value):
+        normalized = channel / 255
+        channels.append(normalized / 12.92 if normalized <= 0.03928 else ((normalized + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def contrast_ratio(first: Any, second: Any) -> float:
+    a, b = _luminance(first), _luminance(second)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+
+def _accessibility(colors: dict[str, Any]) -> dict[str, Any]:
+    bg = colors.get("bg", "#ffffff")
+    return {"title_ratio": round(contrast_ratio(colors.get("title"), bg), 2), "body_ratio": round(contrast_ratio(colors.get("body"), bg), 2), "passes": contrast_ratio(colors.get("title"), bg) >= 3 and contrast_ratio(colors.get("body"), bg) >= 3}
+
+
+def validate_theme_pack(theme: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize a theme-pack payload while preserving extension fields."""
+    if not isinstance(theme, dict):
+        return get_theme("light-academic")
+    colors = dict(theme.get("colors") or {})
+    defaults = get_theme(str(theme.get("base_theme") or "light-academic"))
+    colors = {**(defaults.get("colors") or {}), **colors}
+    normalized = {**defaults, **theme, "colors": colors, "tokens": {**(defaults.get("tokens") or {}), **(theme.get("tokens") or {})}}
+    normalized["accessibility"] = _accessibility(colors)
+    normalized["schema_version"] = int(theme.get("schema_version") or 1)
+    return normalized
 
 
 def _safe(value: Any) -> str:
@@ -113,7 +168,7 @@ def render_slide_svg(page: Any, theme: dict[str, Any], layout: dict[str, Any] | 
     custom_elements = [item for item in raw_custom_elements if isinstance(item, dict)] if isinstance(raw_custom_elements, list) else []
     if custom_elements:
         rendered: list[str] = []
-        for item in custom_elements:
+        for item in sorted(custom_elements, key=lambda value: float(value.get("zIndex", 1) or 1)):
             kind = str(item.get("type") or "").strip().lower()
             if kind == "image" or (kind == "icon" and item.get("src")):
                 rendered.append(f'<image href="{_safe(item.get("src"))}" x="{float(item.get("x", 0)) * 12.8:.1f}" y="{float(item.get("y", 0)) * 7.2:.1f}" width="{float(item.get("w", 20)) * 12.8:.1f}" height="{float(item.get("h", 20)) * 7.2:.1f}" preserveAspectRatio="{"xMidYMid slice" if item.get("object_fit", "cover") == "cover" else "xMidYMid meet"}" opacity="{float(item.get("opacity", 1))}"/>')

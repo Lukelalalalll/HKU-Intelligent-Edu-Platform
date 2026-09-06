@@ -24,6 +24,8 @@ TOOLS: list[dict[str, Any]] = [
     _tool("getPresentationOutline", "读取当前课件的页面顺序、标题和要点。", {}),
     _tool("getSlideAtIndex", "读取指定页的完整内容。slide_index 从 0 开始。", {"slide_index": {"type": "integer"}}, ["slide_index"]),
     _tool("searchSlides", "按关键词搜索当前课件页面。", {"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"]),
+    _tool("researchSlideVisuals", "为指定页面联网检索并识别可用图片，返回素材候选和来源。", {"slide_index": {"type": "integer"}}, ["slide_index"]),
+    _tool("planSlideLayout", "根据页面角色、主题和素材候选生成可解释的视觉版式计划。", {"slide_index": {"type": "integer"}}, ["slide_index"]),
     _tool("getAvailableLayouts", "读取当前主题可用的页面布局。", {}),
     _tool("saveSlide", "保存一页完整文档；content 必须是 JSON 对象。可替换现有页或新增页面。", {"slide_index": {"type": "integer"}, "content": {"type": "object"}, "replace_existing": {"type": "boolean"}, "title": {"type": "string"}, "bullets": {"type": "array", "items": {"type": "string"}}, "section_title": {"type": "string"}}, ["content"]),
     _tool("updateSlideOutline", "只修改页面标题、要点或备注。", {"slide_index": {"type": "integer"}, "title": {"type": "string"}, "bullets": {"type": "array", "items": {"type": "string"}}, "speaker_notes": {"type": "string"}}, ["slide_index"]),
@@ -36,6 +38,7 @@ TOOLS: list[dict[str, Any]] = [
 SYSTEM_PROMPT = """你是 PPT Generator 的预览编辑助手。请用用户的语言回答，简洁、准确、行动导向。
 当前课件的实时数据库状态优先于历史对话。用户说第 N 页时，工具索引使用 N-1。
 涉及当前页面内容、顺序、布局或修改时必须先读取实时状态；修改必须调用工具保存，不要只描述计划。
+用户要求配图、联网找图、优化排版时，先调用 researchSlideVisuals，再调用 planSlideLayout；没有可用图片时接受 icon/shape/text-only 降级。
 saveSlide 的 content 必须保留未修改元素并符合 canvas 1280x720；保存成功后再向用户报告。
 当用户说“这一页颜色改为某色”“页面背景色”“整页换色”时，默认理解为背景色，必须调用 updateSlideColors 的 background_color；不能把颜色只写到 section/装饰文字上。
 多页修改必须逐页读取、保存并确认；无法确定目标页时只询问一个澄清问题。
@@ -90,6 +93,13 @@ class PptEditAgent:
             pages = sorted(self.service.project(project_id).pages, key=lambda item: item.sort_order)
             hits = [{"index": i, "id": p.id, "title": p.title, "bullets": p.bullets_json or []} for i, p in enumerate(pages) if query in (p.title + " " + " ".join(p.bullets_json or [])).lower()]
             return {"ok": True, "matches": hits[:limit]}
+        if name == "researchSlideVisuals":
+            page = self._page_at(project_id, int(args.get("slide_index", 0)))
+            return {"ok": True, "slide": self.service.serialize_page(page), "visual": self.service._visual_research(self.service.project(project_id), page)}
+        if name == "planSlideLayout":
+            project = self.service.project(project_id)
+            page = self._page_at(project_id, int(args.get("slide_index", 0)))
+            return {"ok": True, "slide": self.service.serialize_page(page), "visual": self.service._visual_plan(project, page)}
         if name == "getAvailableLayouts":
             project = self.service.project(project_id)
             return {"ok": True, "layouts": list_layouts(project.theme_id or "light-academic")}

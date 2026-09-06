@@ -34,9 +34,9 @@ class PptWorkflowGraph:
     def _route(state: PptGraphState) -> PptGraphState:
         action = state.get("action_type", "")
         allowed = {
-            "page_generate_search_queries", "page_search_run", "page_search_refresh",
+            "page_generate_search_queries", "page_search_run", "page_search_refresh", "page_visual_research", "page_visual_plan",
             "page_summary_generate", "page_draft_generate", "page_design_generate",
-            "project_batch_search", "project_batch_summary", "project_batch_draft", "project_batch_design",
+            "project_batch_search", "project_batch_visual", "project_batch_summary", "project_batch_draft", "project_batch_design",
         }
         decision = {"action_type": action, "should_execute": action in allowed, "scope_type": "page" if state.get("page_id") else "project", "target_page_id": state.get("page_id"), "missing_data": [] if action in allowed else ["supported action_type"], "execution_plan": [{"step_code": action, "step_name": action, "reason": "explicit user action"}]}
         return {**state, "decision": decision, "events": [{"event_type": "router.decision", "payload": decision}]}

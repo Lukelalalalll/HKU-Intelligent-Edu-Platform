@@ -5,6 +5,11 @@ import hashlib
 import re
 import shutil
 import threading
+import base64
+import mimetypes
+import ipaddress
+import socket
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -22,12 +27,17 @@ from app.models import (
     PptSourceCollection, PptSourceDocument, User, PptMessage, PptCheckpoint, PptDocumentVersion, PptGenerationJob,
 )
 from app.db.session import SessionLocal
-from app.services.ppt_theme import preview_filename
+from app.services.ppt_theme import preview_filename, get_theme, list_layouts, validate_theme_pack
+from app.services.browser_image_search import BrowserImageSearch, build_query
+from app.services.image_cache import download_image
+from app.services.visual_search import extract_keywords, query_text, rank_candidates, stable_asset_id
+from app.services.clip_ranker import rerank
 
 
-STAGES = ("init", "outline", "theme", "layout", "design", "export")
+STAGES = ("init", "outline", "visual", "theme", "layout", "design", "export")
 STATUSES = ("empty", "ready", "running", "confirmed", "stale", "failed")
 generation_executor = ThreadPoolExecutor(max_workers=max(1, min(int(getattr(settings, "ppt_generation_executor_workers", 4)), 8)))
+visual_executor = ThreadPoolExecutor(max_workers=max(2, min(int(getattr(settings, "ppt_visual_executor_workers", 6)), 12)))
 _SOURCE_CONTEXT_CACHE: dict[str, list[dict[str, Any]]] = {}
 _SOURCE_CONTEXT_LOCK = threading.Lock()
 _GENERATION_LOCKS: dict[str, threading.Lock] = {}
@@ -119,6 +129,53 @@ class ProviderGateway:
         )
         return response.choices[0].message.content or ""
 
+    def web_search_json(self, query: str, image_focus: bool = False) -> dict[str, Any]:
+        """Run DeepSeek's native server-side web_search tool.
+
+        DeepSeek exposes web search on the Responses API (not Chat
+        Completions). The model performs the search server-side and returns a
+        structured result that we can turn into attributable visual assets.
+        """
+        client = self._client()
+        model = self.config.model if self.config else settings.llm_model
+        focus = (
+            "重点查找真实可访问的图片直链，image_url 尽量填写搜索结果中的图片 URL。"
+            if image_focus
+            else "重点返回权威网页来源；如果搜索结果包含图片，也可填写真实图片直链。"
+        )
+        response = client.responses.create(
+            model=model,
+            instructions=(
+                "你是课件联网研究助手。请使用联网搜索查找与查询最相关的真实来源。"
+                f"{focus}只输出 JSON，不要输出 Markdown：{{results:[{{title,image_url,url,snippet,license,score}}]}}。"
+                "所有 URL 必须来自搜索结果，无法确认时留空，禁止编造。"
+            ),
+            input=query,
+            tools=[{"type": "web_search"}],
+            tool_choice={"type": "web_search"},
+            text={"format": {"type": "json_object"}},
+            max_output_tokens=1800,
+        )
+        text = str(getattr(response, "output_text", "") or "")
+        if not text:
+            for item in getattr(response, "output", []) or []:
+                if getattr(item, "type", None) != "message":
+                    continue
+                for content in getattr(item, "content", []) or []:
+                    if getattr(content, "type", None) == "output_text":
+                        text = str(getattr(content, "text", "") or "")
+                        if text:
+                            break
+                if text:
+                    break
+        try:
+            return json.loads(text or "{}")
+        except json.JSONDecodeError as exc:
+            match = re.search(r"\{[\s\S]*\}", text)
+            if not match:
+                raise HTTPException(502, "DeepSeek 联网搜索返回的结构不是有效 JSON") from exc
+            return json.loads(match.group(0))
+
     def stream_json(self, system: str, payload: dict[str, Any]):
         """Yield model JSON deltas and the final parsed object."""
         client = self._client()
@@ -198,7 +255,12 @@ class PptAgentService:
 
     def serialize_project(self, p: PptProject) -> dict[str, Any]:
         pages = sorted(p.pages, key=lambda item: item.sort_order)
-        return {"id": p.id, "title": p.title, "request_text": p.request_text, "course_id": p.course_id, "current_stage": p.current_stage, "status": p.status, "active_page_id": p.active_page_id, "latest_checkpoint_code": p.latest_checkpoint_code, "page_count_target": p.page_count_target, "theme_id": p.theme_id, "theme_config": p.theme_config or {}, "layout_assignments": p.layout_assignments or {}, "design_status": p.design_status, "page_count": len(pages), "cover_preview_url": preview_filename(p.id, pages[0].id) if pages else None, "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
+        if p.theme_id:
+            base_theme = get_theme(p.theme_id)
+            theme = validate_theme_pack({**base_theme, **(p.theme_config or {}), "colors": {**(base_theme.get("colors") or {}), **((p.theme_config or {}).get("colors") or {})}, "tokens": {**(base_theme.get("tokens") or {}), **((p.theme_config or {}).get("tokens") or {})}})
+        else:
+            theme = p.theme_config or {}
+        return {"id": p.id, "title": p.title, "request_text": p.request_text, "course_id": p.course_id, "current_stage": p.current_stage, "status": p.status, "active_page_id": p.active_page_id, "latest_checkpoint_code": p.latest_checkpoint_code, "page_count_target": p.page_count_target, "theme_id": p.theme_id, "theme_config": theme, "layout_assignments": p.layout_assignments or {}, "design_status": p.design_status, "page_count": len(pages), "cover_preview_url": preview_filename(p.id, pages[0].id) if pages else None, "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
 
     def delete_project(self, project_id: str) -> None:
         project = self.project(project_id)
@@ -214,7 +276,8 @@ class PptAgentService:
     def serialize_page(self, p: PptPage) -> dict[str, Any]:
         statuses = dict(p.statuses_json or {})
         document = p.design_document_json or p.draft_document_json
-        return {"id": p.id, "project_id": p.project_id, "section_title": p.section_title, "sort_order": p.sort_order, "title": p.title, "bullets": p.bullets_json or [], "statuses": statuses, "search_queries": p.search_queries_json or [], "summary_md": p.summary_md, "citations": p.citations_json or [], "document": document, "document_revision": p.document_revision, "current_document_version_id": p.current_document_version_id, "speaker_notes": p.speaker_notes, "page_role": p.page_role, "content_plan": p.content_plan_json or {}, "visual_plan": p.visual_plan_json or {}, "preview_url": preview_filename(p.project_id, p.id) if document else None, "layout_id": (p.project.layout_assignments or {}).get(p.id), "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
+        visual_plan = p.visual_plan_json or {}
+        return {"id": p.id, "project_id": p.project_id, "section_title": p.section_title, "sort_order": p.sort_order, "title": p.title, "bullets": p.bullets_json or [], "statuses": statuses, "search_queries": p.search_queries_json or [], "summary_md": p.summary_md, "citations": p.citations_json or [], "document": document, "document_revision": p.document_revision, "current_document_version_id": p.current_document_version_id, "speaker_notes": p.speaker_notes, "page_role": p.page_role, "content_plan": p.content_plan_json or {}, "visual_plan": visual_plan, "asset_manifest": visual_plan.get("asset_manifest", []), "image_slots": visual_plan.get("image_slots", []), "selected_asset_ids": visual_plan.get("selected_asset_ids", []), "preview_url": preview_filename(p.project_id, p.id) if document else None, "layout_id": (p.project.layout_assignments or {}).get(p.id), "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
 
     def list_projects(self) -> list[dict[str, Any]]:
         return [self.serialize_project(p) for p in self.db.scalars(select(PptProject).where(PptProject.owner_id == self.user.id).order_by(PptProject.updated_at.desc()))]
@@ -261,7 +324,7 @@ class PptAgentService:
         # Confirmation is an explicit transition, never a hidden side effect
         # of generating the next artifact.
         if code == "outline_confirm":
-            p.current_stage = "theme"
+            p.current_stage = "visual"
             p.status = "active"
         elif code.endswith("_confirm"):
             p.status = "active"
@@ -439,7 +502,7 @@ class PptAgentService:
             return self.requirement_chat(project_id, content, option_id, option_label)
         self._message(p, "user", content, page_id)
         decision = ProviderGateway(self.db, self.user.id).json(
-            "你是课件工作区 router。只输出 JSON：{action_type,should_execute,reason}. action_type 必须是 page_update_outline_in_search、page_generate_search_queries、page_search_run、page_summary_generate、page_draft_generate、page_design_generate 之一。无法判断时 should_execute=false。",
+            "你是课件工作区 router。只输出 JSON：{action_type,should_execute,reason}. action_type 必须是 page_update_outline_in_search、page_generate_search_queries、page_search_run、page_visual_research、page_visual_plan、page_summary_generate、page_draft_generate、page_design_generate 之一。无法判断时 should_execute=false。",
             {"message": content, "project_stage": p.current_stage, "page_id": page_id},
         )
         if not decision.get("should_execute"):
@@ -479,7 +542,7 @@ class PptAgentService:
         order = 0
         for section in data.get("sections", []):
             for page in section.get("pages", []):
-                statuses = {k: ("ready" if k == "outline" else "empty") for k in ("outline", "search", "summary", "draft", "design")}
+                statuses = {k: ("ready" if k == "outline" else "empty") for k in ("outline", "search", "visual", "summary", "draft", "design")}
                 self.db.add(PptPage(project_id=p.id, section_title=section.get("title", ""), sort_order=order, title=page.get("title", "未命名页面"), bullets_json=page.get("bullets", [])[:8], statuses_json=statuses)); order += 1
         p.current_stage = "search"; self.db.commit(); self.db.refresh(p)
         checkpoint = PptCheckpoint(project_id=p.id, checkpoint_code="outline_confirm", stage="outline", status="pending", summary_md="大纲已生成，请确认章节和页数后继续。", payload_json=outline)
@@ -490,7 +553,8 @@ class PptAgentService:
     def select_theme(self, project_id: str, theme_id: str) -> dict[str, Any]:
         p = self.project(project_id)
         from app.services.ppt_theme import get_theme
-        theme = get_theme(theme_id)
+        theme = validate_theme_pack(get_theme(theme_id))
+        theme = {**theme, "schema_version": 1, "base_theme": theme.get("base_theme") or theme["id"], "layout_recipes": {layout["id"]: {"roles": layout.get("roles", []), "kind": layout.get("kind")} for layout in list_layouts(theme["id"])}}
         # A theme change invalidates all generated layout/design artifacts.
         p.theme_id = theme["id"]; p.theme_config = theme; p.current_stage = "layout"; p.design_status = "pending"
         p.layout_assignments = {}
@@ -501,7 +565,7 @@ class PptAgentService:
             page.draft_document_json = None
             page.current_document_version_id = None
             page.document_revision += 1
-            page.statuses_json = {**(page.statuses_json or {}), "draft": "empty", "design": "empty"}
+            page.statuses_json = {**(page.statuses_json or {}), "visual": "stale" if page.visual_plan_json else "empty", "draft": "empty", "design": "empty"}
         self.db.commit()
         return self.serialize_project(p)
 
@@ -558,6 +622,26 @@ class PptAgentService:
             generation_executor.submit(_run_generation_job, job.id, p.id, self.user.id)
             return self.serialize_generation(job)
 
+    def start_visual_research(self, project_id: str) -> dict[str, Any]:
+        """Queue visual research immediately and return without waiting on providers."""
+        p = self.project(project_id)
+        with _GENERATION_LOCKS_GUARD:
+            lock = _GENERATION_LOCKS.setdefault(f"visual:{p.id}", threading.Lock())
+        with lock:
+            existing = self.db.scalar(select(PptGenerationJob).where(
+                PptGenerationJob.project_id == p.id,
+                PptGenerationJob.stage == "visual",
+                PptGenerationJob.status.in_(["queued", "running"]),
+            ).order_by(PptGenerationJob.created_at.desc()))
+            if existing:
+                return self.serialize_generation(existing)
+            pages = sorted(p.pages, key=lambda x: x.sort_order)
+            job = PptGenerationJob(project_id=p.id, total_pages=len(pages), status="queued", stage="visual")
+            self.db.add(job); self.db.commit(); self.db.refresh(job)
+            self._event(p, "visual.research.started", {"job_id": job.id, "total_pages": len(pages)}); self.db.commit()
+            visual_executor.submit(_run_visual_research_job, job.id, p.id, self.user.id)
+            return self.serialize_generation(job)
+
     def generation_job(self, project_id: str, job_id: str) -> dict[str, Any]:
         self.project(project_id)
         job = self.db.scalar(select(PptGenerationJob).where(PptGenerationJob.id == job_id, PptGenerationJob.project_id == project_id))
@@ -578,7 +662,6 @@ class PptAgentService:
         p = self.project(project_id)
         if not p.theme_id:
             raise HTTPException(409, "请先选择主题")
-        from app.services.ppt_theme import get_theme, list_layouts
         theme = get_theme(p.theme_id); layout_list = list_layouts(p.theme_id); layouts = {item["id"]: item for item in layout_list}
         pages = sorted(p.pages, key=lambda x: x.sort_order)
         p.design_status = "running"; p.current_stage = "layout"; self._event(p, "design.pipeline.started", {"page_count": len(pages)}); self.db.commit()
@@ -651,7 +734,7 @@ class PptAgentService:
         page.title, page.bullets_json = payload["title"].strip(), payload.get("bullets", [])[:8]
         if payload.get("section_title") is not None: page.section_title = payload["section_title"]
         if payload.get("speaker_notes") is not None: page.speaker_notes = payload["speaker_notes"]
-        statuses = dict(page.statuses_json or {}); statuses.update({"summary": "stale" if page.summary_md else "empty", "draft": "stale" if page.draft_document_json else "empty", "design": "stale" if page.design_document_json else "empty"}); page.statuses_json = statuses
+        statuses = dict(page.statuses_json or {}); statuses.update({"search": "stale" if page.citations_json else "empty", "visual": "stale" if page.visual_plan_json else "empty", "summary": "stale" if page.summary_md else "empty", "draft": "stale" if page.draft_document_json else "empty", "design": "stale" if page.design_document_json else "empty"}); page.statuses_json = statuses
         self.db.commit(); return self.serialize_page(page)
 
     def delete_page(self, project_id: str, page_id: str) -> dict[str, Any]:
@@ -681,7 +764,7 @@ class PptAgentService:
             sort_order=len(p.pages),
             title=title.strip() or "未命名页面",
             bullets_json=[str(item) for item in bullets[:8]],
-            statuses_json={"outline": "ready", "search": "empty", "summary": "empty", "draft": "empty", "design": "ready" if document else "empty"},
+            statuses_json={"outline": "ready", "search": "empty", "visual": "empty", "summary": "empty", "draft": "empty", "design": "ready" if document else "empty"},
             design_document_json=document,
         )
         self.db.add(page)
@@ -694,8 +777,28 @@ class PptAgentService:
             self.db.commit()
         return self.serialize_page(page)
 
+    def save_visual_selection(self, project_id: str, page_id: str, asset_ids: list[str]) -> dict[str, Any]:
+        page = self.page(project_id, page_id)
+        ids = list(dict.fromkeys(str(x) for x in asset_ids))
+        if len(ids) > 6:
+            raise HTTPException(422, "每页最多选择 6 张图片")
+        visual = dict(page.visual_plan_json or {})
+        assets = [x for x in (visual.get("asset_manifest") or []) if isinstance(x, dict)]
+        known = {str(x.get("id")): x for x in assets}
+        unknown = [x for x in ids if x not in known]
+        if unknown:
+            raise HTTPException(422, "选择的图片不属于当前页面候选集")
+        visual["selected_asset_ids"] = ids
+        visual["selection_status"] = "confirmed"
+        page.visual_plan_json = visual
+        page.statuses_json = {**(page.statuses_json or {}), "visual": "ready"}
+        self.db.commit()
+        return self.serialize_page(page)
+
     def run_action(self, project_id: str, page_id: str | None, action_type: str, replace_existing: bool = True) -> dict[str, Any]:
         p = self.project(project_id); page = self.page(project_id, page_id) if page_id else None
+        if action_type == "project_batch_visual":
+            return self.start_visual_research(project_id)
         from app.services.ppt_graph import PptWorkflowGraph
         graph_state = PptWorkflowGraph().invoke({"project_id": p.id, "page_id": page_id, "action_type": action_type})
         decision = graph_state["decision"]
@@ -705,6 +808,8 @@ class PptAgentService:
         try:
             if action_type == "page_generate_search_queries": result = self._page_queries(p, page)
             elif action_type in {"page_search_run", "page_search_refresh"}: result = self._page_search(p, page, replace_existing or action_type.endswith("refresh"))
+            elif action_type == "page_visual_research": result = self._visual_research(p, page)
+            elif action_type == "page_visual_plan": result = self._visual_plan(p, page)
             elif action_type == "page_summary_generate": result = self._summary(p, page)
             elif action_type == "page_draft_generate": result = self._draft(p, page)
             elif action_type == "page_design_generate": result = self._design(p, page)
@@ -715,16 +820,318 @@ class PptAgentService:
             run.status, run.error_message = "failed", str(exc); self._event(p, "agent.run.failed", {"run_id": run.id, "error": str(exc)}); self.db.commit(); raise
 
     def _page_queries(self, p: PptProject, page: PptPage) -> dict[str, Any]:
-        gateway = ProviderGateway(self.db, self.user.id); data = gateway.json("只输出 JSON：{queries:[{query_text,query_purpose}]}。生成 3-6 条面向当前页的可执行搜索词。", {"project": p.request_text, "page": page.title, "bullets": page.bullets_json, "outline": [{"title": x.title, "section": x.section_title} for x in p.pages]}); page.search_queries_json = data.get("queries", [])[:6]; page.statuses_json = {**(page.statuses_json or {}), "search": "ready"}; self.db.commit(); return {"queries": page.search_queries_json}
+        keywords = extract_keywords(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
+        text = query_text(page.section_title, page.title, page.bullets_json or [], page.page_role)
+        queries = [{"query_text": text, "query_purpose": "outline keyword match"}]
+        for word in keywords[2:6]:
+            queries.append({"query_text": f"{word} {page.page_role or 'concept'}", "query_purpose": "keyword expansion"})
+        page.search_queries_json = queries[:6]; page.statuses_json = {**(page.statuses_json or {}), "search": "ready"}; self.db.commit(); return {"queries": page.search_queries_json}
 
     def _page_search(self, p: PptProject, page: PptPage, replace: bool) -> dict[str, Any]:
         if not page.search_queries_json: self._page_queries(p, page)
-        if not settings.search_provider_url: raise HTTPException(409, "未配置联网搜索服务；请先上传课程资料，或配置 SEARCH_PROVIDER_URL")
+        if not settings.search_provider_url:
+            # DeepSeek's native web_search is exposed by the Responses API.
+            # This keeps page search functional without a second search key.
+            results: list[dict[str, Any]] = []
+            gateway = ProviderGateway(self.db, self.user.id)
+            failures = 0
+            def search_one(query):
+                try:
+                    data = gateway.web_search_json(str(query.get("query_text") or ""))
+                    items = data.get("results") or data.get("images") or []
+                    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+                except Exception:
+                    return None
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                for found in pool.map(search_one, page.search_queries_json[:6]):
+                    if found is None: failures += 1
+                    else: results.extend(found)
+            page.citations_json = self._dedupe_search_results(results)[:30]
+            search_status = "failed" if failures and not page.citations_json else "ready" if page.citations_json else "empty"
+            page.statuses_json = {**(page.statuses_json or {}), "search": search_status, "visual": "stale"}
+            self.db.commit()
+            return {"result_count": len(page.citations_json), "failed_queries": failures, "status": search_status, "provider": "deepseek_web_search"}
         import httpx
         results = []
+        failures = 0
+        headers = {"Authorization": f"Bearer {settings.search_provider_key}"} if settings.search_provider_key else {}
         for q in page.search_queries_json:
-            response = httpx.post(settings.search_provider_url, json={"query": q["query_text"]}, headers={"Authorization": f"Bearer {settings.search_provider_key}"} if settings.search_provider_key else {}, timeout=60); response.raise_for_status(); results.extend(response.json().get("results", []))
-        page.citations_json = results[:30]; page.statuses_json = {**(page.statuses_json or {}), "search": "ready"}; self.db.commit(); return {"result_count": len(results)}
+            for attempt in range(2):
+                try:
+                    request_payload = {"query": q["query_text"], "type": "web_and_image"} if attempt == 0 else {"query": q["query_text"]}
+                    response = httpx.post(settings.search_provider_url, json=request_payload, headers=headers, timeout=60)
+                    response.raise_for_status(); payload = response.json()
+                    if isinstance(payload, list):
+                        results.extend(payload)
+                    else:
+                        results.extend(payload.get("results", [])); results.extend(payload.get("images", []))
+                    break
+                except Exception:
+                    if attempt == 1:
+                        failures += 1
+                        continue
+        page.citations_json = self._dedupe_search_results(results)[:30]
+        search_status = "failed" if failures and not page.citations_json else "ready"
+        page.statuses_json = {**(page.statuses_json or {}), "search": search_status, "visual": "stale"}
+        self.db.commit(); return {"result_count": len(page.citations_json), "failed_queries": failures, "status": search_status}
+
+    @staticmethod
+    def _wikimedia_image_search(query: str, limit: int = 8) -> list[dict[str, Any]]:
+        """Use Wikimedia Commons as a keyless, license-aware image fallback.
+
+        A small public fallback keeps the visual step useful when native search
+        cannot return image URLs. A configured provider remains the preferred
+        source for richer web/image retrieval.
+        """
+        if not query.strip():
+            return []
+        try:
+            import httpx
+
+            response = httpx.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "generator": "search",
+                    "gsrsearch": query,
+                    "gsrnamespace": 6,
+                    "gsrlimit": max(1, min(limit, 12)),
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime|size|extmetadata",
+                    "iiurlwidth": 1600,
+                    "format": "json",
+                    "formatversion": 2,
+                },
+                headers={"User-Agent": "HKU-Courseware-Agent/1.0"},
+                timeout=4,
+            )
+            response.raise_for_status()
+            pages = ((response.json() or {}).get("query") or {}).get("pages") or []
+            results: list[dict[str, Any]] = []
+            for item in pages:
+                info = (item.get("imageinfo") or [{}])[0]
+                image_url = info.get("thumburl") or info.get("url")
+                if not image_url:
+                    continue
+                metadata = info.get("extmetadata") or {}
+
+                def meta(name: str) -> str:
+                    value = metadata.get(name) or {}
+                    return str(value.get("value") or "").strip() if isinstance(value, dict) else str(value).strip()
+
+                title = str(item.get("title") or "").removeprefix("File:").strip()
+                results.append({
+                    "title": title or "Wikimedia Commons image",
+                    "image_url": image_url,
+                    "url": info.get("descriptionurl") or image_url,
+                    "snippet": meta("ImageDescription") or title,
+                    "license": meta("LicenseShortName") or "Wikimedia Commons",
+                    "score": 0.62,
+                    "source": "wikimedia_commons",
+                })
+            return results
+        except Exception:
+            return []
+
+    @staticmethod
+    def _openverse_image_search(query: str, limit: int = 8) -> list[dict[str, Any]]:
+        """Public, attribution-aware image search fallback."""
+        if not query.strip():
+            return []
+        try:
+            import httpx
+            response = httpx.get("https://api.openverse.org/v1/images/", params={"q": query, "page_size": max(1, min(limit, 20))}, headers={"User-Agent": "HKU-Courseware-Agent/1.0"}, timeout=6)
+            response.raise_for_status()
+            results = []
+            for item in (response.json() or {}).get("results", []):
+                image_url = item.get("thumbnail") or item.get("url")
+                if not image_url:
+                    continue
+                results.append({"title": item.get("title") or "Openverse image", "image_url": image_url, "url": item.get("foreign_landing_url") or item.get("url"), "snippet": item.get("description") or item.get("title") or query, "license": item.get("license") or "Openverse", "score": float(item.get("score") or 0.55), "source": "openverse"})
+            return results
+        except Exception:
+            return []
+
+    @staticmethod
+    def _dedupe_search_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen: set[str] = set(); output: list[dict[str, Any]] = []
+        for raw in results:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            key = str(item.get("url") or item.get("link") or item.get("title") or "").strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key); output.append(item)
+        return output
+
+    @staticmethod
+    def _image_url(item: dict[str, Any]) -> str:
+        for key in ("image_url", "thumbnail", "thumbnail_url", "image", "src", "url"):
+            value = item.get(key)
+            if isinstance(value, dict):
+                value = value.get("url") or value.get("src")
+            if isinstance(value, str) and value.startswith(("http://", "https://", "data:")):
+                if key == "url" and not re.search(r"\.(png|jpe?g|webp|gif)(\?|$)", value, re.I):
+                    continue
+                return value
+        return ""
+
+    def _download_image(self, p: PptProject, page: PptPage, url: str, index: int) -> dict[str, Any] | None:
+        if not url or url.startswith("data:"):
+            return {"id": f"asset-{page.id}-{index}", "src": url, "public_url": url, "source_url": url, "status": "ready"} if url else None
+        try:
+            parsed_url = urlparse(url)
+            if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+                return None
+            host = parsed_url.hostname.lower()
+            if host in {"localhost", "127.0.0.1", "::1"}:
+                return None
+            try:
+                resolved = socket.gethostbyname(host)
+                if ipaddress.ip_address(resolved).is_private or ipaddress.ip_address(resolved).is_loopback or ipaddress.ip_address(resolved).is_link_local:
+                    return None
+            except (OSError, ValueError):
+                return None
+            import httpx
+            response = httpx.get(url, follow_redirects=True, timeout=6, headers={"User-Agent": "HKU-Courseware-Agent/1.0"})
+            response.raise_for_status()
+            content = response.content
+            if len(content) > 8 * 1024 * 1024:
+                return None
+            content_type = response.headers.get("content-type", "")
+            suffix = Path(urlparse(str(response.url)).path).suffix.lower()
+            if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+                suffix = ".jpg" if "jpeg" in content_type or "jpg" in content_type else ".png"
+            root = settings.ppt_storage_path / p.id / "assets"
+            root.mkdir(parents=True, exist_ok=True)
+            filename = f"{stable_asset_id(url)}{suffix}"
+            path = root / filename
+            if not path.exists():
+                path.write_bytes(content)
+            public_url = f"/api/ppt/projects/{p.id}/assets/{filename}"
+            asset = {"id": f"asset-{page.id}-{index}", "src": public_url, "asset_path": str(path), "public_url": public_url, "source_url": url, "mime_type": content_type or mimetypes.guess_type(filename)[0] or "image/jpeg", "status": "ready"}
+            # Recognition is deliberately deferred; it must never block image insertion.
+            asset["recognition"] = {"status": "pending"}
+            return asset
+        except Exception as exc:
+            return {"id": f"asset-{page.id}-{index}", "source_url": url, "status": "failed", "error": str(exc)[:160]}
+
+    def _recognize_image(self, content: bytes, mime_type: str) -> dict[str, Any]:
+        """Best-effort OCR/vision enrichment; never blocks slide generation."""
+        try:
+            gateway = ProviderGateway(self.db, self.user.id)
+            client = gateway._client()
+            model = gateway.config.model if gateway.config else settings.llm_model
+            response = client.chat.completions.create(model=model, temperature=0.1, messages=[{"role": "user", "content": [{"type": "text", "text": "请识别这张图片：输出 JSON，字段为 description、ocr_text、visual_tags、is_chart。不要猜测无法看清的文字。"}, {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64.b64encode(content).decode()}"}}]}])
+            text = response.choices[0].message.content or "{}"
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                match = re.search(r"\{[\s\S]*\}", text)
+                parsed = json.loads(match.group(0)) if match else {"description": text}
+            return {"description": str(parsed.get("description") or ""), "ocr_text": str(parsed.get("ocr_text") or ""), "visual_tags": [str(item) for item in (parsed.get("visual_tags") or [])[:8]], "is_chart": bool(parsed.get("is_chart"))}
+        except Exception as exc:
+            return {"status": "unavailable", "error": str(exc)[:120]}
+
+    def _visual_research(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        if not getattr(page, "search_queries_json", None) and not getattr(page, "citations_json", None):
+            self._page_queries(p, page)
+        keywords = extract_keywords(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
+        query_text_value = build_query(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
+        raw_results: list[dict[str, Any]] = []
+        try:
+            raw_results.extend(BrowserImageSearch(mode=settings.visual_search_mode, proxy=settings.visual_search_proxy or None, timeout=settings.visual_search_timeout_seconds, headless=settings.visual_search_browser_headless, executable_path=settings.visual_search_browser_executable_path or None).search_sync(query_text_value, 12))
+        except Exception as exc:
+            browser_error = str(exc)[:200]
+        else:
+            browser_error = ""
+        raw_results.extend(getattr(page, "citations_json", None) or [])
+        if not raw_results:
+            for query in (page.search_queries_json or [])[:3]:
+                text = str(query.get("query_text") or "")
+                found = self._wikimedia_image_search(text, 8)
+                raw_results.extend(found or self._openverse_image_search(text, 8))
+        ranked = rank_candidates(raw_results, keywords, limit=12)
+        page.citations_json = self._dedupe_search_results(ranked)
+        if not page.citations_json:
+            visual = dict(page.visual_plan_json or {}); visual.update({"asset_manifest": [], "asset_status": "degraded", "asset_error": "公开图库未返回可用图片"}); page.visual_plan_json = visual; page.statuses_json = {**(page.statuses_json or {}), "visual": "empty"}; self.db.commit(); return {"asset_count": 0, "assets": [], "status": "degraded"}
+        candidates: list[dict[str, Any]] = []
+        for item in page.citations_json or []:
+            if not isinstance(item, dict):
+                continue
+            url = self._image_url(item)
+            if not url:
+                continue
+            if url.startswith("data:"):
+                asset = self._download_image(p, page, url, len(candidates) + 1)
+            else:
+                try:
+                    cached = download_image(url, settings.ppt_storage_path / p.id / "assets", f"/api/ppt/projects/{p.id}/assets", max_bytes=settings.visual_search_max_image_bytes, timeout=settings.visual_search_timeout_seconds)
+                    asset = {"id": f"asset-{page.id}-{len(candidates)+1}", "source_url": item.get("url") or url, **cached}
+                except Exception:
+                    asset = None
+            if asset:
+                asset.update({"title": item.get("title") or page.title, "alt": item.get("snippet") or item.get("title") or page.title, "score": float(item.get("score") or item.get("relevance") or 0.5), "license": item.get("license") or item.get("copyright")})
+                candidates.append(asset)
+            if len(candidates) >= 6:
+                break
+        if not candidates and not settings.search_provider_url:
+            # Existing citations may contain web pages but no direct image URL.
+            # Keep the image step useful by querying the public image fallback
+            # before marking the page as empty.
+            queries = page.search_queries_json or [{"query_text": f"{page.title} {page.section_title}".strip()}]
+            for query in queries[:1]:
+                text = str(query.get("query_text") or "")
+                fallback = self._wikimedia_image_search(text, 4) or self._openverse_image_search(text, 4)
+                for item in fallback:
+                    url = self._image_url(item)
+                    asset = self._download_image(p, page, url, len(candidates) + 1) if url else None
+                    if asset:
+                        asset.update({"title": item.get("title") or page.title, "alt": item.get("snippet") or item.get("title") or page.title, "score": float(item.get("score") or 0.5), "license": item.get("license")})
+                        candidates.append(asset)
+                    if len(candidates) >= 6:
+                        break
+                if len(candidates) >= 6:
+                    break
+        visual = dict(page.visual_plan_json or {})
+        # A new candidate set requires an explicit user confirmation again.
+        if hasattr(page, "search_queries_json"):
+            visual["selected_asset_ids"] = []
+            visual["selection_status"] = "pending"
+        candidates = rerank(candidates, query_text(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", "")), getattr(settings, "clip_model_name", ""))
+        visual["asset_manifest"] = candidates[:6]
+        visual["asset_query"] = query_text(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
+        visual["asset_status"] = "ready" if candidates else ("failed" if browser_error else "empty")
+        if browser_error and not candidates: visual["asset_error"] = browser_error
+        page.visual_plan_json = visual
+        page.statuses_json = {**(page.statuses_json or {}), "visual": "ready" if candidates else "empty"}
+        self.db.commit()
+        return {"asset_count": len(candidates), "assets": candidates, "status": visual["asset_status"]}
+
+    def _visual_plan(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        visual = dict(page.visual_plan_json or {})
+        all_assets = [item for item in visual.get("asset_manifest", []) if isinstance(item, dict) and item.get("status") == "ready"]
+        selected = visual.get("selected_asset_ids")
+        assets = [item for item in all_assets if not (isinstance(selected, list) and item.get("id") not in selected)]
+        role = page.page_role or "concept"
+        fallback_kind = {"cover": "image-focus", "section": "image-focus", "case": "image-text", "process": "process-timeline", "comparison": "two-column"}.get(role, "image-text" if assets else "content")
+        plan = {"layout_kind": fallback_kind, "image_slots": []}
+        for index, asset in enumerate(assets[:6]):
+            if index == 0 and role in {"cover", "section"}:
+                x, y, w, h, hint = 0, 0, 100, 100, "background"
+            elif len(assets) == 1:
+                x, y, w, h, hint = 54, 18, 40, 70, "right"
+            elif len(assets) <= 3:
+                x, y, w, h, hint = 54 + (index % 2) * 21, 22 + (index // 2) * 34, 19, 28, "supporting"
+            else:
+                x, y, w, h, hint = 54 + (index % 3) * 15, 18 + (index // 3) * 34, 13, 28, "grid"
+            plan["image_slots"].append({"slot_id": f"image-{index + 1}", "asset_id": asset["id"], "src": asset.get("public_url") or asset.get("src"), "asset_path": asset.get("asset_path"), "placement_hint": hint, "x": x, "y": y, "w": w, "h": h, "object_fit": "cover", "confidence": round(min(0.98, 0.62 + float(asset.get("score") or 0) * 0.3), 2)})
+        visual.update(plan)
+        page.visual_plan_json = visual
+        page.statuses_json = {**(page.statuses_json or {}), "visual": "ready"}
+        self.db.commit()
+        return visual
 
     def _summary(self, p: PptProject, page: PptPage) -> dict[str, Any]:
         text = "\n\n".join(c.content_md for col in self.db.scalars(select(PptSourceCollection).where(PptSourceCollection.project_id == p.id, PptSourceCollection.page_id == page.id)) for d in col.documents for c in d.chunks)
@@ -755,6 +1162,10 @@ class PptAgentService:
         else:
             for index, text in enumerate(bullets):
                 elements.append({"id": f"bullet-{index}", "type": "body", "x": 9, "y": 29 + index * 10, "w": 82, "h": 8, "text": f"• {text}", "font_size": 18 if len(text) < 70 else 15, "font_weight": 500, "color": colors.get("body")})
+        visual = page.visual_plan_json or {}
+        for index, slot in enumerate(visual.get("image_slots") or []):
+            if slot.get("src"):
+                elements.append({"id": f"image-slot-{index + 1}", "type": "image", "asset_id": slot.get("asset_id"), "src": slot.get("src"), "asset_path": slot.get("asset_path"), "alt": page.title, "x": slot.get("x", 54), "y": slot.get("y", 18), "w": slot.get("w", 40), "h": slot.get("h", 70), "object_fit": slot.get("object_fit", "cover"), "zIndex": 0})
         editor_theme = {**colors, "background": colors.get("bg")}
         return {"version": 2, "canvas": {"width": 1280, "height": 720}, "layout": layout["id"], "theme": editor_theme, "elements": elements, "speaker_notes": page.speaker_notes}
 
@@ -786,12 +1197,52 @@ class PptAgentService:
         gateway = ProviderGateway(self.db, self.user.id)
         selected_layout = layout or {"id": (page.document or {}).get("layout", "title-content"), "kind": "content"}
         raw = gateway.json("你是资深教学课件设计 Agent。只输出结构化 Slide JSON：{layout,theme,elements:[{type,x,y,w,h,text,items,src,font_size,font_weight,color,fill}],speaker_notes}。大纲只是页面职责，不是最终全文；必须优先使用 content_plan 扩写后的论点、案例和视觉建议。根据页面角色设计清晰层级：标题 30-44px、正文 18-24px、辅助文字 12-16px；封面/目录/章节/对比/流程/案例/总结使用匹配的视觉结构。所有坐标使用 0-100 百分比，留出安全边距，禁止严重重叠和文字堆叠。", {"mode": mode, "page": {"title": page.title, "section": page.section_title, "role": page.page_role, "bullets": page.bullets_json, "summary": page.summary_md, "content_plan": page.content_plan_json or {}, "visual_plan": page.visual_plan_json or {}}, "outline": outline or [], "layout": selected_layout, "theme": p.theme_config or {}})
-        return self._normalize_document(raw, selected_layout, p.theme_config or {})
+        return self._apply_visual_plan(page, self._normalize_document(raw, selected_layout, p.theme_config or {}))
+
+    @staticmethod
+    def _apply_visual_plan(page: PptPage, document: dict[str, Any]) -> dict[str, Any]:
+        result = dict(document or {})
+        elements = [dict(item) for item in result.get("elements") or [] if isinstance(item, dict)]
+        existing_asset_ids = {str(item.get("asset_id")) for item in elements if item.get("asset_id")}
+        plan = page.visual_plan_json or {}
+        for index, slot in enumerate(plan.get("image_slots") or []):
+            if not isinstance(slot, dict) or not slot.get("src") or str(slot.get("asset_id")) in existing_asset_ids:
+                continue
+            elements.append({"id": f"image-slot-{index + 1}", "type": "image", "asset_id": slot.get("asset_id"), "src": slot.get("src"), "asset_path": slot.get("asset_path"), "alt": slot.get("alt") or page.title, "x": slot.get("x", 54), "y": slot.get("y", 18), "w": slot.get("w", 40), "h": slot.get("h", 70), "object_fit": slot.get("object_fit", "cover"), "zIndex": 0})
+        result["elements"] = elements
+        result["visual_plan"] = plan
+        return PptAgentService._repair_document_layout(result)
+
+    @staticmethod
+    def _repair_document_layout(document: dict[str, Any]) -> dict[str, Any]:
+        """Apply conservative geometry repairs after model/layout composition."""
+        elements = [dict(item) for item in document.get("elements") or [] if isinstance(item, dict)]
+        images = [item for item in elements if str(item.get("type") or "").lower() == "image" and float(item.get("x", 0) or 0) > 0]
+        text_items = [item for item in elements if str(item.get("type") or "").lower() in {"body", "caption"}]
+        for image in images:
+            ix, iy, iw, ih = (float(image.get(key, 0) or 0) for key in ("x", "y", "w", "h"))
+            for text in text_items:
+                tx, ty, tw, th = (float(text.get(key, 0) or 0) for key in ("x", "y", "w", "h"))
+                intersects = ix < tx + tw and ix + iw > tx and iy < ty + th and iy + ih > ty
+                if not intersects:
+                    continue
+                if ix >= 50:
+                    text["w"] = max(8, min(tw, ix - tx - 3))
+                else:
+                    image["x"] = min(96 - iw, max(ix, tx + tw + 3))
+        for item in elements:
+            for key in ("x", "y", "w", "h"):
+                try:
+                    item[key] = max(0.0, min(100.0, float(item.get(key, 0))))
+                except (TypeError, ValueError):
+                    item[key] = 0.0
+            item["w"] = min(item["w"], 100 - item["x"]); item["h"] = min(item["h"], 100 - item["y"])
+        return {**document, "elements": elements}
 
     @staticmethod
     def _normalize_document(raw: dict[str, Any], selected_layout: dict[str, Any], theme_config: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(raw or {}); normalized["version"] = 2; normalized["canvas"] = {"width": 1280, "height": 720}; normalized["elements"] = []
-        normalized["layout"] = selected_layout["id"]; colors = (theme_config or {}).get("colors", {}); normalized["theme"] = {**colors, "background": colors.get("bg")}
+        normalized["layout"] = selected_layout["id"]; colors = (theme_config or {}).get("colors", {}); normalized["theme"] = {**colors, "background": colors.get("bg"), "tokens": (theme_config or {}).get("tokens", {}), "accessibility": (theme_config or {}).get("accessibility", {})}
         for index, item in enumerate(raw.get("elements") or []):
             element = dict(item or {}); element["id"] = str(element.get("id") or f"element-{index + 1}")
             for key in ("x", "y", "w", "h"):
@@ -816,7 +1267,7 @@ class PptAgentService:
         page.statuses_json = {**(page.statuses_json or {}), "design": "ready"}; self.db.commit(); return {"page_id": page.id, "document": page.design_document_json, "revision": page.document_revision}
 
     def _batch(self, p: PptProject, action: str) -> dict[str, Any]:
-        mapping = {"project_batch_search": "page_search_run", "project_batch_summary": "page_summary_generate", "project_batch_draft": "page_draft_generate", "project_batch_design": "page_design_generate"}; results = []
+        mapping = {"project_batch_search": "page_search_run", "project_batch_visual": "page_visual_research", "project_batch_summary": "page_summary_generate", "project_batch_draft": "page_draft_generate", "project_batch_design": "page_design_generate"}; results = []
         for page in sorted(p.pages, key=lambda x: x.sort_order):
             try: results.append(self.run_action(p.id, page.id, mapping[action])["result"])
             except HTTPException as exc: results.append({"page_id": page.id, "status": "skipped", "reason": exc.detail})
@@ -879,6 +1330,53 @@ class PptAgentService:
         self.db.add(PptAgentEvent(project_id=p.id, event_type=event_type, payload_json=payload))
 
 
+def _run_visual_research_job(job_id: str, project_id: str, user_id: str) -> None:
+    db = SessionLocal()
+    try:
+        job, project, user = db.get(PptGenerationJob, job_id), db.get(PptProject, project_id), db.get(User, user_id)
+        if not job or not project or not user: return
+        job.status = "running"; db.commit()
+        pages = sorted(project.pages, key=lambda x: x.sort_order)
+        def one(page_id: str):
+            local = SessionLocal()
+            try:
+                p, u, page = local.get(PptProject, project_id), local.get(User, user_id), local.get(PptPage, page_id)
+                if not p or not u or not page: return False
+                svc = PptAgentService(local, u)
+                page.statuses_json = {**(page.statuses_json or {}), "visual": "running"}; local.commit()
+                svc._event(p, "page.visual.searching", {"job_id": job_id, "page_id": page_id}); local.commit()
+                svc._visual_research(p, page); svc._visual_plan(p, page)
+                svc._event(p, "page.visual.ready", {"job_id": job_id, "page_id": page_id, "asset_count": len((page.visual_plan_json or {}).get("asset_manifest") or [])}); local.commit()
+                return True
+            except Exception as exc:
+                local.rollback(); page = local.get(PptPage, page_id)
+                if page:
+                    page.statuses_json = {**(page.statuses_json or {}), "visual": "failed"}
+                    page.visual_plan_json = {**(page.visual_plan_json or {}), "asset_status": "failed", "asset_error": str(exc)[:200]}
+                    local.commit()
+                return False
+            finally: local.close()
+        # Keep pages in a project serial to reduce search-engine throttling and
+        # make completed_pages monotonic for the polling client.
+        outcomes = []
+        for page in pages:
+            ok = one(page.id)
+            outcomes.append(ok)
+            job = db.get(PptGenerationJob, job_id)
+            if job:
+                job.completed_pages = sum(1 for item in outcomes if item)
+                job.failed_pages = sum(1 for item in outcomes if not item)
+                job.current_page_id = page.id
+                db.commit()
+        job = db.get(PptGenerationJob, job_id)
+        job.completed_pages = sum(1 for ok in outcomes if ok); job.failed_pages = sum(1 for ok in outcomes if not ok)
+        job.status = "completed" if job.failed_pages == 0 else "completed_with_errors" if job.completed_pages else "failed"; job.finished_at = datetime.now(timezone.utc); db.commit()
+    except Exception as exc:
+        db.rollback(); job = db.get(PptGenerationJob, job_id)
+        if job: job.status, job.error_message = "failed", str(exc)[:500]; job.finished_at = datetime.now(timezone.utc); db.commit()
+    finally: db.close()
+
+
 def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
     """Run deck planning and page generation outside the request thread."""
     db = SessionLocal()
@@ -927,6 +1425,17 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
                 svc = PptAgentService(local, u)
                 svc._event(p, "page.content_started", {"job_id": job_id, "page_id": page_id}); local.commit()
                 try:
+                    svc._visual_research(p, page)
+                    svc._visual_plan(p, page)
+                    svc._event(p, "page.visual_research_completed", {"job_id": job_id, "page_id": page_id, "asset_count": len((page.visual_plan_json or {}).get("asset_manifest") or [])})
+                    local.commit()
+                except Exception as exc:
+                    # Visual enrichment is best-effort; text-only generation must
+                    # remain available when search/image providers are down.
+                    page.visual_plan_json = {**(page.visual_plan_json or {}), "asset_status": "degraded", "asset_error": str(exc)[:200]}
+                    page.statuses_json = {**(page.statuses_json or {}), "visual": "failed"}
+                    local.commit()
+                try:
                     combined = ProviderGateway(local, u.id).json("只输出 JSON：{bullets:[string],summary:string,speaker_notes:string,citations:[object],visual_plan:object,elements:[{type,x,y,w,h,text,items,src,font_size,font_weight,color,fill}]}. 根据页面主线与资料补充教学内容并设计版式；不编造引用，坐标使用 0-100 百分比，标题 30-44px、正文 18-24px，避免重叠和文字堆叠。", {"project": p.request_text, "page": svc.serialize_page(page), "plan": page.content_plan_json or {}, "sources": source_context, "layout": layouts.get(assignments.get(page_id), layout_list[0]), "theme": p.theme_config or {}})
                     if isinstance(combined, dict):
                         if isinstance(combined.get("bullets"), list) and combined["bullets"]: page.bullets_json = [str(x) for x in combined["bullets"][:8]]
@@ -934,7 +1443,7 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
                         page.speaker_notes = str(combined.get("speaker_notes") or page.speaker_notes or "")
                         if isinstance(combined.get("citations"), list): page.citations_json = combined["citations"][:30]
                         page.visual_plan_json = combined.get("visual_plan") if isinstance(combined.get("visual_plan"), dict) else page.visual_plan_json
-                        document = svc._normalize_document(combined, layouts.get(assignments.get(page_id), layout_list[0]), p.theme_config or {})
+                        document = svc._apply_visual_plan(page, svc._normalize_document(combined, layouts.get(assignments.get(page_id), layout_list[0]), p.theme_config or {}))
                     else:
                         raise ValueError("invalid combined design")
                 except Exception:
