@@ -2,13 +2,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user, require_roles
 from app.db.session import get_db
 from app.core.config import settings
-from app.models import Course, CourseChapter, CourseMaterial, CourseSchedule, Enrollment, FileAsset, User, UserRole
+from app.models import Course, CourseChapter, CourseMaterial, CourseSchedule, DiscussionComment, DiscussionLike, Enrollment, FileAsset, User, UserRole
 from app.schemas import (
     CourseChapterCreate,
     CourseChapterOut,
@@ -16,6 +16,10 @@ from app.schemas import (
     CourseCreate,
     CourseMaterialOut,
     CourseOut,
+    DiscussionAuthorOut,
+    DiscussionCommentCreate,
+    DiscussionCommentOut,
+    DiscussionLikeOut,
     ParticipantDetailOut,
     ParticipantSummaryOut,
     ScheduleIn,
@@ -83,6 +87,119 @@ def _normalize_chapter_order(course: Course, kind: str, selected: CourseChapter 
         chapters.insert(index, selected)
     for index, chapter in enumerate(chapters):
         chapter.sort_order = index
+
+
+def _discussion_author_out(user: User) -> DiscussionAuthorOut:
+    return DiscussionAuthorOut(id=user.id, username=user.username, name=user.name, avatar_url=user.avatar_url)
+
+
+def _discussion_comment_out(comment: DiscussionComment, current_user_id: str) -> DiscussionCommentOut:
+    replies = sorted(comment.replies, key=lambda item: (item.created_at, item.id))
+    return DiscussionCommentOut(
+        id=comment.id,
+        course_id=comment.course_id,
+        parent_id=comment.parent_id,
+        author=_discussion_author_out(comment.author),
+        content=comment.content,
+        created_at=comment.created_at,
+        updated_at=comment.updated_at,
+        like_count=len(comment.likes),
+        liked_by_me=any(like.user_id == current_user_id for like in comment.likes),
+        reply_count=len(replies),
+        replies=[_discussion_comment_out(reply, current_user_id) for reply in replies],
+    )
+
+
+def _discussion_comment_or_404(course_id: str, comment_id: str, db: Session) -> DiscussionComment:
+    comment = db.scalar(
+        select(DiscussionComment)
+        .where(DiscussionComment.id == comment_id, DiscussionComment.course_id == course_id)
+        .options(selectinload(DiscussionComment.author), selectinload(DiscussionComment.likes), selectinload(DiscussionComment.replies))
+    )
+    if not comment:
+        raise HTTPException(404, "Discussion comment not found")
+    return comment
+
+
+def _discussion_activity(comment: DiscussionComment):
+    timestamps = [comment.updated_at, *(reply.updated_at for reply in comment.replies)]
+    return max(timestamps)
+
+
+@router.get("/{course_id}/discussion", response_model=list[DiscussionCommentOut])
+def list_discussion(course_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _course_for_user(course_id, user, db)
+    comments = db.scalars(
+        select(DiscussionComment)
+        .where(DiscussionComment.course_id == course_id, DiscussionComment.parent_id.is_(None))
+        .options(
+            selectinload(DiscussionComment.author),
+            selectinload(DiscussionComment.likes),
+            selectinload(DiscussionComment.replies).selectinload(DiscussionComment.author),
+            selectinload(DiscussionComment.replies).selectinload(DiscussionComment.likes),
+        )
+    ).all()
+    comments.sort(key=lambda item: (_discussion_activity(item), item.id), reverse=True)
+    return [_discussion_comment_out(comment, user.id) for comment in comments]
+
+
+@router.post("/{course_id}/discussion", response_model=DiscussionCommentOut, status_code=201)
+def create_discussion_comment(course_id: str, payload: DiscussionCommentCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _course_for_user(course_id, user, db)
+    comment = DiscussionComment(course_id=course_id, author_id=user.id, content=payload.content)
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    comment.author = user
+    return _discussion_comment_out(comment, user.id)
+
+
+@router.post("/{course_id}/discussion/{comment_id}/replies", response_model=DiscussionCommentOut, status_code=201)
+def create_discussion_reply(course_id: str, comment_id: str, payload: DiscussionCommentCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _course_for_user(course_id, user, db)
+    parent = _discussion_comment_or_404(course_id, comment_id, db)
+    if parent.parent_id is not None:
+        raise HTTPException(400, "Replies can only target top-level comments")
+    reply = DiscussionComment(course_id=course_id, author_id=user.id, parent_id=parent.id, content=payload.content)
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+    reply.author = user
+    return _discussion_comment_out(reply, user.id)
+
+
+@router.put("/{course_id}/discussion/{comment_id}/like", response_model=DiscussionLikeOut)
+def like_discussion_comment(course_id: str, comment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _course_for_user(course_id, user, db)
+    comment = _discussion_comment_or_404(course_id, comment_id, db)
+    like = db.scalar(select(DiscussionLike).where(DiscussionLike.comment_id == comment.id, DiscussionLike.user_id == user.id))
+    if not like:
+        db.add(DiscussionLike(comment_id=comment.id, user_id=user.id))
+        db.commit()
+    count = db.scalar(select(func.count(DiscussionLike.id)).where(DiscussionLike.comment_id == comment.id)) or 0
+    return DiscussionLikeOut(liked=True, like_count=count)
+
+
+@router.delete("/{course_id}/discussion/{comment_id}/like", response_model=DiscussionLikeOut)
+def unlike_discussion_comment(course_id: str, comment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _course_for_user(course_id, user, db)
+    comment = _discussion_comment_or_404(course_id, comment_id, db)
+    like = db.scalar(select(DiscussionLike).where(DiscussionLike.comment_id == comment.id, DiscussionLike.user_id == user.id))
+    if like:
+        db.delete(like)
+        db.commit()
+    count = db.scalar(select(func.count(DiscussionLike.id)).where(DiscussionLike.comment_id == comment.id)) or 0
+    return DiscussionLikeOut(liked=False, like_count=count)
+
+
+@router.delete("/{course_id}/discussion/{comment_id}", status_code=204)
+def delete_discussion_comment(course_id: str, comment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    course = _course_for_user(course_id, user, db)
+    comment = _discussion_comment_or_404(course_id, comment_id, db)
+    if comment.author_id != user.id and user.role not in {UserRole.admin} and course.teacher_id != user.id:
+        raise HTTPException(403, "You cannot delete this comment")
+    db.delete(comment)
+    db.commit()
 
 
 @router.get("/{course_id}/materials", response_model=list[CourseChapterOut])

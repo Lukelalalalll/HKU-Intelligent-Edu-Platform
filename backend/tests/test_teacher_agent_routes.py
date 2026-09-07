@@ -43,7 +43,7 @@ def setup_function():
         other = User(username="other", email="other@example.test", name="Other", password_hash=hash_password("123456"), role=UserRole.teacher)
         student = User(username="student", email="student@example.test", name="Student", password_hash=hash_password("123456"), role=UserRole.student)
         db.add_all([teacher, other, student]); db.flush()
-        course = Course(code="HKU-101", name="Learning Design", description="Demo", teacher_id=teacher.id)
+        course = Course(code="COMP2119", name="Learning Design", description="Demo", teacher_id=teacher.id)
         course.schedules = [CourseSchedule(weekday=2, start_time="10:00", end_time="12:00", room="CPD")]
         db.add(course); db.flush()
         db.add(Enrollment(course_id=course.id, student_id=student.id))
@@ -64,7 +64,7 @@ def test_teacher_dashboard_aggregates_schedule_and_pending_reviews():
     response = client.get("/api/teacher/dashboard")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["courses"][0]["code"] == "HKU-101"
+    assert payload["courses"][0]["code"] == "COMP2119"
     assert payload["schedule"][0]["room"] == "CPD"
     assert payload["pending_assignments"][0]["pending_count"] == 1
 
@@ -76,8 +76,8 @@ def test_student_dashboard_is_scoped_and_reports_assignment_status():
     assert response.status_code == 200
     payload = response.json()
     assert payload["timezone"] == "Asia/Hong_Kong"
-    assert [course["code"] for course in payload["courses"]] == ["HKU-101"]
-    assert payload["schedule"][0]["course_code"] == "HKU-101"
+    assert [course["code"] for course in payload["courses"]] == ["COMP2119"]
+    assert payload["schedule"][0]["course_code"] == "COMP2119"
     assert payload["assignment_reminders"][0]["submission_status"] == "overdue"
 
     teacher_client = TestClient(app)
@@ -126,7 +126,7 @@ def test_course_materials_are_scoped_and_downloadable(tmp_path, monkeypatch):
     client = TestClient(app)
     login(client, "teacher")
     with TestingSession() as db:
-        course_id = db.query(Course).filter_by(code="HKU-101").one().id
+        course_id = db.query(Course).filter_by(code="COMP2119").one().id
 
     chapter = client.post(f"/api/courses/{course_id}/materials/chapters", json={"kind": "lecture", "title": "Week 1"})
     assert chapter.status_code == 201

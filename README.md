@@ -113,6 +113,10 @@ frontend/
 - `GET/POST /api/courses`
 - `GET /api/courses/{course_id}`
 - `POST/DELETE /api/courses/{course_id}/enroll`
+- `GET/POST /api/courses/{course_id}/discussion`
+- `DELETE /api/courses/{course_id}/discussion/{comment_id}`
+- `POST /api/courses/{course_id}/discussion/{comment_id}/replies`
+- `PUT/DELETE /api/courses/{course_id}/discussion/{comment_id}/like`
 - `GET/POST /api/courses/{course_id}/assignments`
 - `POST/GET /api/courses/{course_id}/assignments/{assignment_id}/submissions`
 - `POST /api/files`
@@ -190,6 +194,8 @@ VISUAL_SEARCH_PROXY=http://127.0.0.1:7890
 视觉选择接口保持兼容：`PUT /api/ppt/projects/{project_id}/pages/{page_id}/visual-selection`。`asset_ids` 可以是空数组，表示该页确认使用 0 张图片；只有确认后的 ID 才会进入视觉版式计划。
 
 升级已有数据库时请执行：`cd backend && alembic upgrade head`。
+
+课程代号统一为四位英文字母加四位数字（例如 `COMP2119`）；升级数据库时，旧的不合规代号会自动替换为唯一的 `COUR0001`、`COUR0002` 等代号并保留课程关联数据。
 
 ## Zoom 实时课堂
 

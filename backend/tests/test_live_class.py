@@ -8,7 +8,7 @@ import app.services.zoom as zoom
 
 
 def test_next_occurrence_uses_course_term_and_timezone(monkeypatch):
-    course = Course(academic_year_start=2025, semester="semester_1", timezone="Asia/Hong_Kong", code="HKU-1", name="Test", teacher_id="t")
+    course = Course(academic_year_start=2025, semester="semester_1", timezone="Asia/Hong_Kong", code="COMP2119", name="Test", teacher_id="t")
     schedule = CourseSchedule(weekday=2, start_time="10:00", end_time="12:00", timezone=None)
     now = datetime(2025, 9, 1, 1, 0, tzinfo=timezone.utc)
     occurrence = next_occurrence(course, schedule, now)
@@ -20,7 +20,7 @@ def test_next_occurrence_uses_course_term_and_timezone(monkeypatch):
 
 
 def test_within_window_has_early_join_and_post_class_grace():
-    course = Course(academic_year_start=2025, semester="semester_1", timezone="Asia/Hong_Kong", code="HKU-1", name="Test", teacher_id="t")
+    course = Course(academic_year_start=2025, semester="semester_1", timezone="Asia/Hong_Kong", code="COMP2119", name="Test", teacher_id="t")
     schedule = CourseSchedule(weekday=2, start_time="10:00", end_time="12:00")
     occurrence = next_occurrence(course, schedule, datetime(2025, 9, 1, 1, 0, tzinfo=timezone.utc))
     assert occurrence is not None

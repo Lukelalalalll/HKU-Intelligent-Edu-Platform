@@ -5,10 +5,12 @@ import { courseMaterialsApi, liveClassApi, participantApi, type Course, type Cou
 import { useAuth } from "../../../store";
 import { SEMESTER_LABELS } from "../courseTerms";
 import styles from "../styles/CoursesRoute.module.css";
+import DiscussionModule from "./DiscussionModule";
 
 const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const formatTime = (value: string | null) => value ? new Intl.DateTimeFormat("zh-CN", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "暂无下一课次";
-const sidebarItems = ["Announcements", "Assignments", "Discussions", "Grades", "Participant", "Syllabus", "Lecture Files", "Tutorial File", "Zoom", "Panopto Recordings"];
+export const courseSidebarItems = ["Announcements", "Assignments", "Discussions", "Grades", "Participant", "Syllabus", "Lecture Files", "Tutorial File", "Zoom"];
+const sidebarItems = courseSidebarItems;
 const zoomTabs = [
   { id: "upcoming", label: "Upcoming Meetings" },
   { id: "previous", label: "Previous Meetings" },
@@ -58,8 +60,7 @@ export default function LiveClassPanel({ courseId, course }: { courseId: string;
     finally { setProvisioning(false); }
   };
 
-  if (loading) return <section className={styles.zoomState}><i className="fas fa-circle-notch fa-spin" /><strong>正在检查 Zoom 课堂状态…</strong></section>;
-  if (!liveClass) return <section className={styles.zoomState}><i className="fas fa-circle-exclamation" /><strong>暂时无法加载课堂状态</strong><span>请稍后重试。</span></section>;
+  if (loading && activeModule === "Zoom") return <section className={styles.zoomState}><i className="fas fa-circle-notch fa-spin" /><strong>正在检查 Zoom 课堂状态…</strong></section>;
   const isTeacher = user?.role === "teacher" || user?.role === "admin";
   const termLabel = course ? `${course.academic_year_start}/${String(course.academic_year_start + 1).slice(-2)} · ${SEMESTER_LABELS[course.semester]}` : "Course workspace";
   return <section className={styles.zoomWorkspace} aria-label="Zoom 课程工作区">
@@ -70,8 +71,8 @@ export default function LiveClassPanel({ courseId, course }: { courseId: string;
         {sidebarItems.map((item) => <a href="#" key={item} className={activeModule === item ? styles.zoomCourseNavActive : ""} aria-current={activeModule === item ? "page" : undefined} onClick={(event) => { event.preventDefault(); setActiveModule(item); }}><i className={`fas ${item === "Zoom" ? "fa-video" : item === "Participant" ? "fa-user-group" : item.includes("File") ? "fa-folder-open" : "fa-circle-dot"}`} />{item}</a>)}
       </nav>
     </aside>
-    <div className={`${styles.zoomMain} ${activeModule === "Zoom" ? styles.zoomMainZoom : styles.zoomMainHku} ${activeModule === "Participant" ? styles.zoomMainParticipant : ""} ${materialKind ? styles.zoomMainMaterials : ""}`}>
-      {activeModule === "Zoom" ? <>
+    <div className={`${styles.zoomMain} ${activeModule === "Zoom" ? styles.zoomMainZoom : styles.zoomMainHku} ${activeModule === "Participant" ? styles.zoomMainParticipant : ""} ${activeModule === "Discussions" ? styles.zoomMainDiscussion : ""} ${materialKind ? styles.zoomMainMaterials : ""}`}>
+      {activeModule === "Zoom" ? !liveClass ? <section className={styles.zoomState}><i className="fas fa-circle-exclamation" /><strong>暂时无法加载课堂状态</strong><span>请稍后重试。</span></section> : <>
         <header className={styles.zoomTopbar}>
           <div className={styles.zoomWordmark}>zoom</div>
           <nav className={styles.zoomProductNav} aria-label="Zoom 导航"><span className={styles.zoomProductNavActive}><i className="fas fa-house" /> Home</span><span><i className="fas fa-file-lines" /> Docs</span><span><i className="fas fa-wand-magic-sparkles" /> ZoomMate <b>NEW</b></span></nav>
@@ -89,7 +90,7 @@ export default function LiveClassPanel({ courseId, course }: { courseId: string;
         {liveClass.provisioning_required && isTeacher && <button className="primary-action" type="button" disabled={provisioning} onClick={provision}><i className={`fas ${provisioning ? "fa-circle-notch fa-spin" : "fa-video"}`} />{provisioning ? "准备中…" : "准备 Zoom 课堂"}</button>}
         {liveClass.provisioning_required && user?.role === "student" && <div className={styles.zoomNotice}><i className="fas fa-circle-info" /> 教师尚未准备 Zoom 课堂，准备完成后即可加入。</div>}
         </div>
-      </> : activeModule === "Participant" ? <ParticipantModule participants={participants} loading={participantsLoading} error={participantsError} isTeacher={isTeacher} currentUserId={user?.id} /> : materialKind ? <MaterialsModule courseId={courseId} kind={materialKind} chapters={materials} loading={materialsLoading} error={materialsError} selectedChapterId={selectedChapterId} onSelectChapter={setSelectedChapterId} onRefresh={() => courseMaterialsApi.list(courseId, materialKind).then((response) => { setMaterials(response.data); setSelectedChapterId((current) => response.data.some((chapter) => chapter.id === current) ? current : response.data[0]?.id || null); })} isTeacher={isTeacher} /> : <div className={styles.courseModulePlaceholder}><p className="eyebrow">COURSE MODULE</p><h2>{activeModule}</h2><p>这是课程导航预留的 HKU 工作区。选择左侧 Zoom 后可查看实时课堂和会议安排。</p></div>}
+      </> : activeModule === "Discussions" ? <DiscussionModule courseId={courseId} /> : activeModule === "Participant" ? <ParticipantModule participants={participants} loading={participantsLoading} error={participantsError} isTeacher={isTeacher} currentUserId={user?.id} /> : materialKind ? <MaterialsModule courseId={courseId} kind={materialKind} chapters={materials} loading={materialsLoading} error={materialsError} selectedChapterId={selectedChapterId} onSelectChapter={setSelectedChapterId} onRefresh={() => courseMaterialsApi.list(courseId, materialKind).then((response) => { setMaterials(response.data); setSelectedChapterId((current) => response.data.some((chapter) => chapter.id === current) ? current : response.data[0]?.id || null); })} isTeacher={isTeacher} /> : <div className={styles.courseModulePlaceholder}><p className="eyebrow">COURSE MODULE</p><h2>{activeModule}</h2><p>这是课程导航预留的 HKU 工作区。选择左侧 Zoom 后可查看实时课堂和会议安排。</p></div>}
     </div>
   </section>;
 }

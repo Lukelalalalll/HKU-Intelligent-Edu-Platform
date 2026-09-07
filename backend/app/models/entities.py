@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 from enum import Enum
+import re
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.session import Base
 
@@ -33,6 +34,8 @@ class User(Base):
 
     taught_courses: Mapped[list["Course"]] = relationship(back_populates="teacher", foreign_keys="Course.teacher_id")
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="student", cascade="all, delete-orphan")
+    discussion_comments: Mapped[list["DiscussionComment"]] = relationship(back_populates="author", cascade="all, delete-orphan")
+    discussion_likes: Mapped[list["DiscussionLike"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Course(Base):
@@ -59,6 +62,14 @@ class Course(Base):
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     files: Mapped[list["FileAsset"]] = relationship(back_populates="course")
     chapters: Mapped[list["CourseChapter"]] = relationship(back_populates="course", cascade="all, delete-orphan", order_by="CourseChapter.sort_order")
+    discussion_comments: Mapped[list["DiscussionComment"]] = relationship(back_populates="course", cascade="all, delete-orphan", order_by="DiscussionComment.updated_at")
+
+    @validates("code")
+    def validate_code(self, key: str, value: str) -> str:
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{4}[0-9]{4}", normalized):
+            raise ValueError("Course code must contain 4 letters followed by 4 digits")
+        return normalized
 
 
 class Enrollment(Base):
@@ -163,6 +174,44 @@ class CourseMaterial(Base):
     chapter: Mapped[CourseChapter] = relationship(back_populates="materials")
     file_asset: Mapped[FileAsset] = relationship()
     uploader: Mapped[User] = relationship()
+
+
+class DiscussionComment(Base):
+    __tablename__ = "discussion_comments"
+    __table_args__ = (
+        Index("ix_discussion_comments_course_activity", "course_id", "updated_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("discussion_comments.id", ondelete="CASCADE"), nullable=True, index=True)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    course: Mapped[Course] = relationship(back_populates="discussion_comments")
+    author: Mapped[User] = relationship(back_populates="discussion_comments")
+    parent: Mapped["DiscussionComment | None"] = relationship(
+        "DiscussionComment", remote_side="DiscussionComment.id", back_populates="replies"
+    )
+    replies: Mapped[list["DiscussionComment"]] = relationship(
+        "DiscussionComment", back_populates="parent", cascade="all, delete-orphan", order_by="DiscussionComment.created_at"
+    )
+    likes: Mapped[list["DiscussionLike"]] = relationship(back_populates="comment", cascade="all, delete-orphan")
+
+
+class DiscussionLike(Base):
+    __tablename__ = "discussion_likes"
+    __table_args__ = (
+        UniqueConstraint("comment_id", "user_id", name="uq_discussion_like_comment_user"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    comment_id: Mapped[str] = mapped_column(ForeignKey("discussion_comments.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    comment: Mapped[DiscussionComment] = relationship(back_populates="likes")
+    user: Mapped[User] = relationship(back_populates="discussion_likes")
 
 
 class RecordingSession(Base):

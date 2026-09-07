@@ -78,6 +78,44 @@ class CourseOut(BaseModel):
     schedules: list[ScheduleIn]
 
 
+class DiscussionAuthorOut(BaseModel):
+    id: str
+    username: str
+    name: str
+    avatar_url: str | None
+
+
+class DiscussionCommentCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Comment content cannot be empty")
+        return normalized
+
+
+class DiscussionCommentOut(BaseModel):
+    id: str
+    course_id: str
+    parent_id: str | None
+    author: DiscussionAuthorOut
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    like_count: int
+    liked_by_me: bool
+    reply_count: int
+    replies: list["DiscussionCommentOut"] = Field(default_factory=list)
+
+
+class DiscussionLikeOut(BaseModel):
+    liked: bool
+    like_count: int
+
+
 MaterialKind = Literal["lecture", "tutorial"]
 
 

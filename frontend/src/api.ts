@@ -34,6 +34,9 @@ export type MaterialKind = "lecture" | "tutorial";
 export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string };
 export type CourseChapter = { id: string; kind: MaterialKind; title: string; sort_order: number; material_count: number; materials: CourseMaterial[] };
 export type Participant = { id: string; name: string; email: string; username?: string; avatar_url?: string | null; enrolled_at?: string };
+export type DiscussionAuthor = { id: string; username: string; name: string; avatar_url: string | null };
+export type DiscussionComment = { id: string; course_id: string; parent_id: string | null; author: DiscussionAuthor; content: string; created_at: string; updated_at: string; like_count: number; liked_by_me: boolean; reply_count: number; replies: DiscussionComment[] };
+export type DiscussionLikeResult = { liked: boolean; like_count: number };
 export type LiveClassSchedule = { meeting_id: string; schedule_id: string; weekday: number; start_time: string; end_time: string; timezone: string; status: string; meeting_number: string; next_start: string | null; next_end: string | null; can_join: boolean; can_start: boolean };
 export type LiveClass = { course_id: string; course_name: string; teacher_name: string; timezone: string; schedules: LiveClassSchedule[]; provisioning_required: boolean; status: string };
 export type LiveClassAuthorization = { meeting_number: string; sdk_jwt: string; sdk_key: string; zak: string | null; user_name: string; role: number; expires_at: string; join_url: string };
@@ -110,6 +113,14 @@ export const liveClassApi = {
 };
 export const participantApi = {
   list: (courseId: string) => api.get<Participant[]>(`/courses/${courseId}/participants`),
+};
+export const discussionApi = {
+  list: (courseId: string) => api.get<DiscussionComment[]>(`/courses/${courseId}/discussion`),
+  create: (courseId: string, content: string) => api.post<DiscussionComment>(`/courses/${courseId}/discussion`, { content }),
+  reply: (courseId: string, commentId: string, content: string) => api.post<DiscussionComment>(`/courses/${courseId}/discussion/${commentId}/replies`, { content }),
+  like: (courseId: string, commentId: string) => api.put<DiscussionLikeResult>(`/courses/${courseId}/discussion/${commentId}/like`),
+  unlike: (courseId: string, commentId: string) => api.delete<DiscussionLikeResult>(`/courses/${courseId}/discussion/${commentId}/like`),
+  remove: (courseId: string, commentId: string) => api.delete(`/courses/${courseId}/discussion/${commentId}`),
 };
 export const courseMaterialsApi = {
   list: (courseId: string, kind: MaterialKind) => api.get<CourseChapter[]>(`/courses/${courseId}/materials`, { params: { kind } }),
