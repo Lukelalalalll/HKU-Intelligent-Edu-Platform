@@ -33,7 +33,7 @@ export type Course = { id: string; code: string; name: string; description: stri
 export type MaterialKind = "lecture" | "tutorial";
 export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string; processing_status?: string; processing_error?: string | null };
 export type CoursewareCitation = { course_id: string; course_code: string; course_name: string; chapter_id: string; chapter_title: string; material_id: string; material_title: string; page_number?: number | null; href: string };
-export type CoursewareQuery = { course_id: string | null; course?: { id: string; code: string; name: string } | null; answer: string; citations: CoursewareCitation[]; confidence: number; needs_course_selection: boolean; candidate_courses: { id: string; code: string; name: string }[] };
+export type CoursewareQuery = { course_id: string | null; course?: { id: string; code: string; name: string } | null; answer: string; citations: CoursewareCitation[]; confidence: number; needs_course_selection: boolean; candidate_courses: { id: string; code: string; name: string }[]; model?: string | null };
 export type CourseChapter = { id: string; kind: MaterialKind; title: string; sort_order: number; material_count: number; materials: CourseMaterial[] };
 export type Participant = { id: string; name: string; email: string; username?: string; avatar_url?: string | null; enrolled_at?: string };
 export type DiscussionAuthor = { id: string; username: string; name: string; avatar_url: string | null };
@@ -42,7 +42,22 @@ export type DiscussionLikeResult = { liked: boolean; like_count: number };
 export type LiveClassSchedule = { meeting_id: string; schedule_id: string; weekday: number; start_time: string; end_time: string; timezone: string; status: string; meeting_number: string; next_start: string | null; next_end: string | null; can_join: boolean; can_start: boolean };
 export type LiveClass = { course_id: string; course_name: string; teacher_name: string; timezone: string; schedules: LiveClassSchedule[]; provisioning_required: boolean; status: string };
 export type LiveClassAuthorization = { meeting_number: string; sdk_jwt: string; sdk_key: string; zak: string | null; user_name: string; role: number; expires_at: string; join_url: string };
-export type Assignment = { id: string; course_id: string; title: string; description: string; due_at: string | null; max_score: number; status: string; course_name?: string; pending_count?: number };
+export type FileAsset = { id: string; name: string; size_bytes: number; storage_key: string };
+export type AvailablePptExport = { export_id: string; project_id: string; title: string; file_name: string; size_bytes: number; created_at: string; cover_preview_url?: string | null };
+export type AssignmentAttachment = { id: string; file_asset_id: string; file_name: string; mime_type: string; size_bytes: number; download_url: string };
+export type Assignment = { id: string; course_id: string; title: string; description: string; due_at: string | null; max_score: number; status: string; course_name?: string; pending_count?: number; attachments?: AssignmentAttachment[] };
+
+export const fileAssetsApi = {
+  upload: (file: File) => { const form = new FormData(); form.append("file", file); return api.post<FileAsset>("/files", form); },
+  availablePpt: () => api.get<{ items: AvailablePptExport[] }>("/ppt/exports/available"),
+  copyPpt: (id: string) => api.post<FileAsset>(`/ppt/exports/${id}/copy`),
+};
+export const assignmentsApi = {
+  list: (courseId: string) => api.get<Assignment[]>(`/courses/${courseId}/assignments`),
+  create: (courseId: string, payload: { title: string; description: string; due_at: string | null; max_score: number; file_asset_ids: string[] }) => api.post<Assignment>(`/courses/${courseId}/assignments`, payload),
+  attach: (courseId: string, id: string, assetId: string) => api.post(`/courses/${courseId}/assignments/${id}/attachments`, null, { params: { file_asset_id: assetId } }),
+  removeAttachment: (courseId: string, id: string, attachmentId: string) => api.delete(`/courses/${courseId}/assignments/${id}/attachments/${attachmentId}`),
+};
 export type TeacherSchedule = { course_id: string; course_code: string; course_name: string; weekday: number; start_time: string; end_time: string; room: string };
 export type TeacherDashboardData = { courses: Course[]; schedule: TeacherSchedule[]; pending_assignments: Assignment[] };
 export type StudentSchedule = { course_id: string; course_code: string; course_name: string; teacher_name: string; weekday: number; start_time: string; end_time: string; room: string; timezone?: string | null };
@@ -99,6 +114,8 @@ export type PptRequirement = { project_id: string; status: string; page_count_ta
 export type PptSource = { id: string; title: string; source_type: string; metadata?: Record<string, any>; collection_id: string };
 export type RequirementChatResponse = { project_id: string; message: PptMessage; status: string; answers: Record<string, any>; question?: { code?: string; label: string; options?: string[] } | null; ready_to_outline: boolean; missing_fields: string[]; suggested_additions: string[]; brief_summary?: string; attachments: PptSource[] };
 export type PptProviderConfig = { base_url: string; api_key_configured: boolean; api_key_masked: string; model: string; embedding_model: string; timeout_seconds: number };
+export type AiProvider = { id: string; name: string; provider_type: "openai" | "deepseek"; base_url: string; api_key_configured: boolean; api_key_masked: string; default_model: string; timeout_seconds: number; capabilities: Record<string, boolean>; is_enabled: boolean };
+export type AiBusiness = { business_code: string; role: Role; display_name: string; description: string; provider_id: string | null; provider_name: string | null; model: string; embedding_model: string; timeout_seconds: number | null; is_enabled: boolean };
 export type PptChatTrace = { kind?: string; round?: number; tool?: string; status?: string; message?: string; slideIndex?: number };
 export type PptChatStreamEvent = { type: "status" | "trace" | "chunk" | "complete" | "error"; status?: string; trace?: PptChatTrace; chunk?: string; detail?: string; chat?: { response?: string; tool_calls?: string[]; message_id?: string }; requirement?: RequirementChatResponse };
 export const profileApi = {
@@ -125,6 +142,7 @@ export const discussionApi = {
   remove: (courseId: string, commentId: string) => api.delete(`/courses/${courseId}/discussion/${commentId}`),
 };
 export const courseMaterialsApi = {
+  attach: (courseId: string, payload: { file_asset_id: string; kind: MaterialKind; chapter_id?: string; chapter_title?: string; title?: string }) => api.post<CourseMaterial>(`/courses/${courseId}/materials/assets`, null, { params: payload }),
   list: (courseId: string, kind: MaterialKind) => api.get<CourseChapter[]>(`/courses/${courseId}/materials`, { params: { kind } }),
   createChapter: (courseId: string, payload: { kind: MaterialKind; title: string }) => api.post<CourseChapter>(`/courses/${courseId}/materials/chapters`, payload),
   updateChapter: (courseId: string, chapterId: string, payload: { title?: string; sort_order?: number }) => api.patch<CourseChapter>(`/courses/${courseId}/materials/chapters/${chapterId}`, payload),
@@ -136,6 +154,11 @@ export const courseMaterialsApi = {
 export const studentApi = {
   dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),
   coursewareQuery: (payload: { question: string; course_id?: string }) => api.post<CoursewareQuery>("/courseware-agent/query", payload),
+  coursewareConversations: () => api.get<AgentConversation[]>("/courseware-agent/conversations"),
+  createCoursewareConversation: (title = "新对话") => api.post<AgentConversation>("/courseware-agent/conversations", { title }),
+  coursewareConversation: (id: string) => api.get<AgentConversation & { messages: AgentMessage[] }>(`/courseware-agent/conversations/${id}`),
+  deleteCoursewareConversation: (id: string) => api.delete(`/courseware-agent/conversations/${id}`),
+  appendCoursewareMessage: (id: string, payload: { role: "user" | "assistant"; content: string; citations?: unknown[]; model?: string | null }) => api.post(`/courseware-agent/conversations/${id}/messages`, payload),
 };
 export const pptApi = {
   projects: () => api.get<{ items: PptProject[] }>("/ppt/projects"),
@@ -143,10 +166,6 @@ export const pptApi = {
   createProject: (payload: { title: string; request_text: string; course_id?: string }) => api.post<PptProject>("/ppt/projects", payload),
   project: (id: string) => api.get<PptProject>(`/ppt/projects/${id}`),
   deleteProject: (id: string) => api.delete(`/ppt/projects/${id}`),
-  provider: () => api.get<PptProviderConfig>("/ppt/settings/provider"),
-  saveProvider: (payload: { base_url: string; api_key?: string; model: string; embedding_model: string; timeout_seconds: number }) => api.patch("/ppt/settings/provider", payload),
-  testProvider: () => api.post("/ppt/settings/provider/test"),
-  clearProvider: () => api.delete("/ppt/settings/provider"),
   requirements: (id: string) => api.get<PptRequirement>(`/ppt/projects/${id}/requirements`),
   requirementChat: (id: string, payload: { content?: string; option_id?: string; option_label?: string; bootstrap?: boolean }) => api.post<RequirementChatResponse>(`/ppt/projects/${id}/requirements/chat`, payload),
   streamRequirementChat: async (id: string, payload: { content?: string; option_id?: string; option_label?: string; bootstrap?: boolean }, handlers: { onEvent?: (event: PptChatStreamEvent) => void } = {}, signal?: AbortSignal) => {
@@ -206,4 +225,13 @@ export const pptApi = {
   restoreDocument: (id: string, pageId: string, direction: "undo" | "redo", revision: number) => api.post<PptPage>(`/ppt/projects/${id}/pages/${pageId}/document:${direction}`, { document: {}, revision }),
   patchStoryboard: (id: string, pageIds: string[]) => api.patch<{ items: PptPage[] }>(`/ppt/projects/${id}/storyboard`, { page_ids: pageIds }),
   downloadExport: (id: string, exportId: string) => api.get<Blob>(`/ppt/projects/${id}/exports/${exportId}/download`, { responseType: "blob" }),
+};
+export const adminAiApi = {
+  providers: () => api.get<{ items: AiProvider[] }>("/admin/ai/providers"),
+  createProvider: (payload: Record<string, unknown>) => api.post<AiProvider>("/admin/ai/providers", payload),
+  updateProvider: (id: string, payload: Record<string, unknown>) => api.patch<AiProvider>(`/admin/ai/providers/${id}`, payload),
+  deleteProvider: (id: string) => api.delete(`/admin/ai/providers/${id}`),
+  testProvider: (id: string) => api.post(`/admin/ai/providers/${id}/test`),
+  businesses: () => api.get<{ items: AiBusiness[] }>("/admin/ai/businesses"),
+  updateBusiness: (code: string, payload: Record<string, unknown>) => api.patch(`/admin/ai/businesses/${code}`, payload),
 };

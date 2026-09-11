@@ -174,6 +174,7 @@ class CoursewareQueryOut(BaseModel):
     confidence: float = 0.0
     needs_course_selection: bool = False
     candidate_courses: list[dict] = Field(default_factory=list)
+    model: str | None = None
 
 class ParticipantSummaryOut(BaseModel):
     id: str
@@ -190,6 +191,15 @@ class AssignmentCreate(BaseModel):
     description: str = ""
     due_at: datetime | None = None
     max_score: int = Field(default=100, ge=1, le=1000)
+    file_asset_ids: list[str] = Field(default_factory=list)
+
+class AssignmentAttachmentOut(BaseModel):
+    id: str
+    file_asset_id: str
+    file_name: str
+    mime_type: str
+    size_bytes: int
+    download_url: str
 
 class AssignmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -200,6 +210,7 @@ class AssignmentOut(BaseModel):
     due_at: datetime | None
     max_score: int
     status: str
+    attachments: list[AssignmentAttachmentOut] = Field(default_factory=list)
 
 class SubmissionCreate(BaseModel):
     content: str = ""

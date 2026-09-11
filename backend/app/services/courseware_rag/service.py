@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import Course, CourseChapter, CourseMaterial, CourseMaterialChunk, CourseMaterialIngestion, Enrollment
+from app.services.ai_gateway import gateway_for
 
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="courseware-rag")
 
@@ -112,10 +113,14 @@ def courseware_rag(db: Session, question: str, student_id: str, course_id: str |
         answer = "这门课程目前还没有可用的已索引课件。请稍后再试，或联系教师完成材料索引。"
     else:
         context = "\n\n".join(chunk.content for chunk in chunks)
-        answer = f"根据 {course.code}《{course.name}》的课程材料：\n\n{context[:5000]}\n\n以上内容来自课程知识库，建议结合原课件进一步阅读。"
+        answer = gateway_for(db, "student_lecturer").chat(
+            "你是课程 AI 讲师。只能依据提供的课程材料回答，清楚解释概念并在不确定时说明。",
+            f"课程：{course.code}《{course.name}》\n课程材料：\n{context[:10000]}\n\n学生问题：{question}",
+        )
     citations = []
     for chunk in chunks:
         material = db.get(CourseMaterial, chunk.material_id); chapter = db.get(CourseChapter, chunk.chapter_id)
         if material and chapter:
             citations.append({"course_id": course.id, "course_code": course.code, "course_name": course.name, "chapter_id": chapter.id, "chapter_title": chapter.title, "material_id": material.id, "material_title": material.title, "page_number": chunk.page_number, "href": f"/courses/{course.id}?chapter={chapter.id}&material={material.id}"})
-    return {"course_id": course.id, "course": {"id": course.id, "code": course.code, "name": course.name}, "answer": answer, "citations": citations, "confidence": 0.85 if chunks else 0.1, "needs_course_selection": False, "candidate_courses": []}
+    gateway = gateway_for(db, "student_lecturer") if chunks else None
+    return {"course_id": course.id, "course": {"id": course.id, "code": course.code, "name": course.name}, "answer": answer, "citations": citations, "confidence": 0.85 if chunks else 0.1, "needs_course_selection": False, "candidate_courses": [], "model": gateway.model if gateway else None}

@@ -21,15 +21,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.services.ai_gateway import AIGateway
 from app.models import (
     PptAgentEvent, PptAgentRun, PptExportJob, PptOutlineVersion, PptPage,
-    PptProject, PptProviderConfig, PptRequirement, PptSourceChunk,
+    PptProject, PptRequirement, PptSourceChunk,
     PptSourceCollection, PptSourceDocument, User, PptMessage, PptCheckpoint, PptDocumentVersion, PptGenerationJob,
 )
 from app.db.session import SessionLocal
 from app.services.ppt_theme import preview_filename, get_theme, list_layouts, validate_theme_pack
 from app.services.browser_image_search import BrowserImageSearch, build_query
-from app.services.image_cache import download_image
+from app.services.image_cache import download_image, validate_public_url
 from app.services.visual_search import extract_keywords, query_text, rank_candidates, stable_asset_id
 from app.services.clip_ranker import rerank
 
@@ -80,157 +81,12 @@ def decrypt_api_key(value: str) -> str:
     return _cipher().decrypt(value.encode()).decode()
 
 
-class ProviderGateway:
-    """One OpenAI-compatible gateway used by every graph node."""
-
-    def __init__(self, db: Session, user_id: str):
-        self.db = db
-        self.config = db.scalar(select(PptProviderConfig).where(PptProviderConfig.user_id == user_id))
-        self.api_key = decrypt_api_key(self.config.api_key_encrypted) if self.config else settings.llm_api_key
-
-    def _client(self):
-        if not self.api_key:
-            raise HTTPException(409, "请先在课件 Agent 设置中配置 API Key")
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise HTTPException(500, "后端缺少 openai 依赖，请重新安装 requirements.txt") from exc
-        return _cached_openai_client(
-            self.api_key,
-            (self.config.base_url if self.config else settings.llm_base_url),
-            int(self.config.timeout_seconds if self.config else 120),
-        )
-
-    def json(self, system: str, payload: dict[str, Any]) -> dict[str, Any]:
-        client = self._client()
-        model = self.config.model if self.config else settings.llm_model
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0.2,
-            response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-        )
-        text = response.choices[0].message.content or "{}"
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            match = re.search(r"\{[\s\S]*\}", text)
-            if not match:
-                raise HTTPException(502, "模型返回的结构不是有效 JSON") from exc
-            return json.loads(match.group(0))
-
-    def text(self, system: str, payload: dict[str, Any]) -> str:
-        client = self._client()
-        model = self.config.model if self.config else settings.llm_model
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0.3,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-        )
-        return response.choices[0].message.content or ""
-
-    def web_search_json(self, query: str, image_focus: bool = False) -> dict[str, Any]:
-        """Run DeepSeek's native server-side web_search tool.
-
-        DeepSeek exposes web search on the Responses API (not Chat
-        Completions). The model performs the search server-side and returns a
-        structured result that we can turn into attributable visual assets.
-        """
-        client = self._client()
-        model = self.config.model if self.config else settings.llm_model
-        focus = (
-            "重点查找真实可访问的图片直链，image_url 尽量填写搜索结果中的图片 URL。"
-            if image_focus
-            else "重点返回权威网页来源；如果搜索结果包含图片，也可填写真实图片直链。"
-        )
-        response = client.responses.create(
-            model=model,
-            instructions=(
-                "你是课件联网研究助手。请使用联网搜索查找与查询最相关的真实来源。"
-                f"{focus}只输出 JSON，不要输出 Markdown：{{results:[{{title,image_url,url,snippet,license,score}}]}}。"
-                "所有 URL 必须来自搜索结果，无法确认时留空，禁止编造。"
-            ),
-            input=query,
-            tools=[{"type": "web_search"}],
-            tool_choice={"type": "web_search"},
-            text={"format": {"type": "json_object"}},
-            max_output_tokens=1800,
-        )
-        text = str(getattr(response, "output_text", "") or "")
-        if not text:
-            for item in getattr(response, "output", []) or []:
-                if getattr(item, "type", None) != "message":
-                    continue
-                for content in getattr(item, "content", []) or []:
-                    if getattr(content, "type", None) == "output_text":
-                        text = str(getattr(content, "text", "") or "")
-                        if text:
-                            break
-                if text:
-                    break
-        try:
-            return json.loads(text or "{}")
-        except json.JSONDecodeError as exc:
-            match = re.search(r"\{[\s\S]*\}", text)
-            if not match:
-                raise HTTPException(502, "DeepSeek 联网搜索返回的结构不是有效 JSON") from exc
-            return json.loads(match.group(0))
-
-    def stream_json(self, system: str, payload: dict[str, Any]):
-        """Yield model JSON deltas and the final parsed object."""
-        client = self._client()
-        model = self.config.model if self.config else settings.llm_model
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0.2,
-            response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-            stream=True,
-        )
-        raw = ""
-        emitted = ""
-        for item in response:
-            delta = getattr(item.choices[0].delta, "content", None) if getattr(item, "choices", None) else None
-            if not delta:
-                continue
-            raw += delta
-            marker = '"assistant_markdown"'
-            start = raw.find(marker)
-            if start >= 0:
-                colon = raw.find(":", start + len(marker))
-                if colon >= 0:
-                    encoded = raw[colon + 1:].lstrip()
-                    if encoded.startswith('"'):
-                        value = encoded[1:]
-                        escaped = False
-                        end = None
-                        for index, char in enumerate(value):
-                            if char == '"' and not escaped:
-                                end = index
-                                break
-                            escaped = char == "\\" and not escaped
-                            if char != "\\":
-                                escaped = False
-                        if end is not None:
-                            try:
-                                decoded = json.loads('"' + value[:end] + '"')
-                                if decoded.startswith(emitted):
-                                    next_text = decoded[len(emitted):]
-                                    emitted = decoded
-                                    if next_text:
-                                        yield {"type": "chunk", "chunk": next_text}
-                            except json.JSONDecodeError:
-                                pass
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            match = re.search(r"\{[\s\S]*\}", raw)
-            if not match:
-                raise HTTPException(502, "模型返回的结构不是有效 JSON") from exc
-            data = json.loads(match.group(0))
-        yield {"type": "final", "data": data}
-
-
+class ProviderGateway(AIGateway):
+    """Backward-compatible PPT gateway backed by the platform AI mapping."""
+    def __init__(self, db: Session, user_id: str | None = None, business_code: str = "teacher_ppt_agent"):
+        super().__init__(db, business_code)
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(model=self.model, embedding_model=(self.binding.embedding_model if self.binding else ""))
 @lru_cache(maxsize=32)
 def _cached_openai_client(api_key: str, base_url: str, timeout: int):
     from openai import OpenAI
@@ -1040,13 +896,22 @@ class PptAgentService:
         keywords = extract_keywords(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
         query_text_value = build_query(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
         raw_results: list[dict[str, Any]] = []
-        try:
-            raw_results.extend(BrowserImageSearch(mode=settings.visual_search_mode, proxy=settings.visual_search_proxy or None, timeout=settings.visual_search_timeout_seconds, headless=settings.visual_search_browser_headless, executable_path=settings.visual_search_browser_executable_path or None).search_sync(query_text_value, 12))
-        except Exception as exc:
-            browser_error = str(exc)[:200]
-        else:
+        existing_citations = getattr(page, "citations_json", None) or []
+        # Existing citations with direct image URLs are already usable. Avoid
+        # replacing a deterministic candidate set with a second network search
+        # (and keep retries from duplicating or reordering the same assets).
+        has_direct_image = any(isinstance(item, dict) and self._image_url(item) for item in existing_citations)
+        if has_direct_image:
             browser_error = ""
-        raw_results.extend(getattr(page, "citations_json", None) or [])
+            raw_results.extend(existing_citations)
+        else:
+            try:
+                raw_results.extend(BrowserImageSearch(mode=settings.visual_search_mode, proxy=settings.visual_search_proxy or None, timeout=settings.visual_search_timeout_seconds, headless=settings.visual_search_browser_headless, executable_path=settings.visual_search_browser_executable_path or None).search_sync(query_text_value, 12))
+            except Exception as exc:
+                browser_error = str(exc)[:200]
+            else:
+                browser_error = ""
+            raw_results.extend(existing_citations)
         if not raw_results:
             for query in (page.search_queries_json or [])[:3]:
                 text = str(query.get("query_text") or "")
@@ -1054,8 +919,6 @@ class PptAgentService:
                 raw_results.extend(found or self._openverse_image_search(text, 8))
         ranked = rank_candidates(raw_results, keywords, limit=12)
         page.citations_json = self._dedupe_search_results(ranked)
-        if not page.citations_json:
-            visual = dict(page.visual_plan_json or {}); visual.update({"asset_manifest": [], "asset_status": "degraded", "asset_error": "公开图库未返回可用图片"}); page.visual_plan_json = visual; page.statuses_json = {**(page.statuses_json or {}), "visual": "empty"}; self.db.commit(); return {"asset_count": 0, "assets": [], "status": "degraded"}
         candidates: list[dict[str, Any]] = []
         for item in page.citations_json or []:
             if not isinstance(item, dict):
@@ -1070,13 +933,20 @@ class PptAgentService:
                     cached = download_image(url, settings.ppt_storage_path / p.id / "assets", f"/api/ppt/projects/{p.id}/assets", max_bytes=settings.visual_search_max_image_bytes, timeout=settings.visual_search_timeout_seconds)
                     asset = {"id": f"asset-{page.id}-{len(candidates)+1}", "source_url": item.get("url") or url, **cached}
                 except Exception:
-                    asset = None
+                    # A search result can be a perfectly valid image even when
+                    # the backend cannot cache it (hotlink protection, a
+                    # transient CDN error, or a content-type mismatch). Keep a
+                    # public URL as a degraded candidate so the browser can
+                    # still render it and the user can continue with visuals.
+                    asset = self._remote_image_asset(url, page, len(candidates) + 1)
+            if asset and asset.get("status") == "failed":
+                asset = self._remote_image_asset(url, page, len(candidates) + 1)
             if asset:
                 asset.update({"title": item.get("title") or page.title, "alt": item.get("snippet") or item.get("title") or page.title, "score": float(item.get("score") or item.get("relevance") or 0.5), "license": item.get("license") or item.get("copyright")})
                 candidates.append(asset)
             if len(candidates) >= 6:
                 break
-        if not candidates and not settings.search_provider_url:
+        if not candidates:
             # Existing citations may contain web pages but no direct image URL.
             # Keep the image step useful by querying the public image fallback
             # before marking the page as empty.
@@ -1087,6 +957,8 @@ class PptAgentService:
                 for item in fallback:
                     url = self._image_url(item)
                     asset = self._download_image(p, page, url, len(candidates) + 1) if url else None
+                    if asset and asset.get("status") == "failed":
+                        asset = self._remote_image_asset(url, page, len(candidates) + 1)
                     if asset:
                         asset.update({"title": item.get("title") or page.title, "alt": item.get("snippet") or item.get("title") or page.title, "score": float(item.get("score") or 0.5), "license": item.get("license")})
                         candidates.append(asset)
@@ -1108,6 +980,27 @@ class PptAgentService:
         page.statuses_json = {**(page.statuses_json or {}), "visual": "ready" if candidates else "empty"}
         self.db.commit()
         return {"asset_count": len(candidates), "assets": candidates, "status": visual["asset_status"]}
+
+    @staticmethod
+    def _remote_image_asset(url: str, page: PptPage, index: int) -> dict[str, Any] | None:
+        """Return a browser-renderable fallback after local caching fails.
+
+        Only public HTTP(S) hosts are allowed here; this mirrors the SSRF
+        guard used by ``_download_image`` and prevents a failed cache request
+        from turning into an unsafe remote URL in the client.
+        """
+        try:
+            validate_public_url(url)
+        except ValueError:
+            return None
+        return {
+            "id": f"asset-{page.id}-{index}",
+            "src": url,
+            "public_url": url,
+            "source_url": url,
+            "status": "ready",
+            "remote_only": True,
+        }
 
     def _visual_plan(self, p: PptProject, page: PptPage) -> dict[str, Any]:
         visual = dict(page.visual_plan_json or {})
@@ -1495,3 +1388,7 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
                 PptAgentService(db, db.get(User, user_id))._event(project, "generation.failed", {"job_id": job_id, "error": str(exc)}); db.commit()
     finally:
         db.close()
+
+
+
+

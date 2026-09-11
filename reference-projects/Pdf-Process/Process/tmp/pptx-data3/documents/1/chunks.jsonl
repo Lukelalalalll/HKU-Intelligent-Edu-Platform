@@ -1,0 +1,2 @@
+{"page": 1, "section": "### Data Engineering", "chunk_type": "heading", "content": "### Data Engineering", "metadata": {"bbox": [0.05, 0.04004636920384952, 0.95, 0.20671303587051618], "block_id": "p1-b1", "source": "pptx", "latex": null}}
+{"page": 1, "section": "### Data Engineering", "chunk_type": "code", "content": "```python\nimport pandas as pd\n\nscore = U @ V.T / sqrt(d)\nSimilarity = softmax(score)\n```", "metadata": {"bbox": [0.05, 0.23333333333333334, 0.95, 0.8932871099445903], "block_id": "p1-b2", "source": "pptx", "latex": null}}

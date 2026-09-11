@@ -1,0 +1,52 @@
+{
+  "page": 3,
+  "width": 612.0,
+  "height": 792.0,
+  "blocks": [
+    {
+      "id": "p3-b1",
+      "type": "text",
+      "text": "3",
+      "markdown": "3",
+      "latex": null,
+      "bbox": [
+        0.4959302416034773,
+        0.937094023733428,
+        0.5040696088005515,
+        0.9496730457652699
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p3-b2",
+      "type": "text",
+      "text": "Question 2 - Data Cleaning with Regular Expressions",
+      "markdown": "Question 2 - Data Cleaning with Regular Expressions",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.09495186083244556,
+        0.6800843781115962,
+        0.1130657485037139
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p3-b3",
+      "type": "code",
+      "text": "30 marks; 3 marks for each exercise\nWrite a regex pattern and the appropriate Python call for each task. Show the results for all supplied\ntest cases. Unless stated otherwise, inputs use ASCII characters and matching is case-sensitive. Use\nwhole-string matching for validation tasks.\n1. Alphabetic strings. Check whether a non-empty string contains only alphabetic characters, uppercase\nor lowercase, without digits or symbols.\nTests: Python, DataScience, Hello123.\n2. Hashtag extraction. Extract hashtags, including the #. A hashtag starts with an ASCII letter after #,\nfollowed by zero or more letters, digits, or underscores. The # must not be immediately preceded by a\nletter, digit, underscore, or another #.\nTest: Follow #DataEngineering and #CS5481, not #123 or tag#hidden.\n3. Domain names. Validate a basic domain name, such as example.com. Labels are separated by dots;\nnon-final labels contain letters, digits, and internal hyphens, and begin/end with a letter or digit. The\nfinal label contains at least two letters. Ignore DNS length limits.\nTests: openai.org, invalid@site, my-site.net.\n4. Integer extraction. Extract all sequences of digits representing non-negative integers from the\nfollowing text; return them in order.\nTest: He scored 45 goals in 2022 and 10 goals in 2023.\n5. Data filenames. Validate a filename ending in lowercase .csv or .json. The non-empty basename\nbegins with a letter, digit, or underscore; later characters may also include hyphens. Paths and spaces\nare not allowed.\nTests: reviews_2026.csv, book-data.json, image.jpg, /tmp/data.csv.\n6. Postal-code format. Validate the format A1A 1A1, where A is an ASCII letter and 1 is a digit, with\nexactly one space after the third character. Either letter case is accepted; check format only.\nTests: K1A 0B1, 123 456.\n7. Matching endpoints. Find strings whose first and last characters are identical. Inputs contain at least\ntwo characters and no newline.\nTests: level, stats, world.\n8. Whitespace cleaning. Replace each run of spaces, tabs, or newlines with one space, then remove\nleading/trailing spaces. Use re.sub for the replacement; strip may be used afterward.\nPython input: \"  Data\\tEngineering\\n  is   useful.  \"\n9. Date extraction. Use one expression to extract dates in either mm/dd/yyyy or yyyy-mm-dd format.\nCheck digit counts and separators only; calendar validity is not required.\nValid tests: 07/04/2021, 2022-12-31, 01/01/2024.\nInvalid tests: 2022/12/31, 13-2020, 07-04-21.\n10. IPv4 validation. Validate four decimal integers separated by dots. Each integer must be from 0 to\n255; leading zeros are not allowed unless the integer is exactly 0.\nTests: 192.168.1.1, 0.0.0.0, 255.255.255.255, 256.1.1.1, 192.168.01.1, 1.2.3.",
+      "markdown": "```python\n30 marks; 3 marks for each exercise\nWrite a regex pattern and the appropriate Python call for each task. Show the results for all supplied\ntest cases. Unless stated otherwise, inputs use ASCII characters and matching is case-sensitive. Use\nwhole-string matching for validation tasks.\n1. Alphabetic strings. Check whether a non-empty string contains only alphabetic characters, uppercase\nor lowercase, without digits or symbols.\nTests: Python, DataScience, Hello123.\n2. Hashtag extraction. Extract hashtags, including the #. A hashtag starts with an ASCII letter after #,\nfollowed by zero or more letters, digits, or underscores. The # must not be immediately preceded by a\nletter, digit, underscore, or another #.\nTest: Follow #DataEngineering and #CS5481, not #123 or tag#hidden.\n3. Domain names. Validate a basic domain name, such as example.com. Labels are separated by dots;\nnon-final labels contain letters, digits, and internal hyphens, and begin/end with a letter or digit. The\nfinal label contains at least two letters. Ignore DNS length limits.\nTests: openai.org, invalid@site, my-site.net.\n4. Integer extraction. Extract all sequences of digits representing non-negative integers from the\nfollowing text; return them in order.\nTest: He scored 45 goals in 2022 and 10 goals in 2023.\n5. Data filenames. Validate a filename ending in lowercase .csv or .json. The non-empty basename\nbegins with a letter, digit, or underscore; later characters may also include hyphens. Paths and spaces\nare not allowed.\nTests: reviews_2026.csv, book-data.json, image.jpg, /tmp/data.csv.\n6. Postal-code format. Validate the format A1A 1A1, where A is an ASCII letter and 1 is a digit, with\nexactly one space after the third character. Either letter case is accepted; check format only.\nTests: K1A 0B1, 123 456.\n7. Matching endpoints. Find strings whose first and last characters are identical. Inputs contain at least\ntwo characters and no newline.\nTests: level, stats, world.\n8. Whitespace cleaning. Replace each run of spaces, tabs, or newlines with one space, then remove\nleading/trailing spaces. Use re.sub for the replacement; strip may be used afterward.\nPython input: \"  Data\\tEngineering\\n  is   useful.  \"\n9. Date extraction. Use one expression to extract dates in either mm/dd/yyyy or yyyy-mm-dd format.\nCheck digit counts and separators only; calendar validity is not required.\nValid tests: 07/04/2021, 2022-12-31, 01/01/2024.\nInvalid tests: 2022/12/31, 13-2020, 07-04-21.\n10. IPv4 validation. Validate four decimal integers separated by dots. Each integer must be from 0 to\n255; leading zeros are not allowed unless the integer is exactly 0.\nTests: 192.168.1.1, 0.0.0.0, 255.255.255.255, 256.1.1.1, 192.168.01.1, 1.2.3.\n```",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.13184789214471374,
+        0.870217915453942,
+        0.7587329594775883
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    }
+  ]
+}

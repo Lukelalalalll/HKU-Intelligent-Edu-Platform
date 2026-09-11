@@ -1,0 +1,681 @@
+{
+  "page": 4,
+  "width": 612.0,
+  "height": 792.0,
+  "blocks": [
+    {
+      "id": "p4-b1",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "4",
+      "text": "4",
+      "markdown": "4",
+      "latex": null,
+      "bbox_raw": [
+        303.5093078613281,
+        742.178466796875,
+        308.4906005859375,
+        752.1410522460938
+      ],
+      "bbox": [
+        0.4959302416034773,
+        0.937094023733428,
+        0.5040696088005515,
+        0.9496730457652699
+      ],
+      "font": [
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b2",
+      "page_number": 4,
+      "type": "heading",
+      "raw_text": "Question 3 - Data Sources and Acquisition Planning",
+      "text": "Question 3 - Data Sources and Acquisition Planning",
+      "markdown": "### Question 3 - Data Sources and Acquisition Planning",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        75.20187377929688,
+        407.3170166015625,
+        89.5480728149414
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.09495186083244556,
+        0.6655506807215074,
+        0.1130657485037139
+      ],
+      "font": [
+        "Cmb10"
+      ],
+      "font_size": 14.346199989318848,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b3",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "20 marks",
+      "text": "20 marks",
+      "markdown": "20 marks",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        104.42353057861328,
+        117.85040283203125,
+        114.3861312866211
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.13184789214471374,
+        0.19256601769939746,
+        0.1444269334427034
+      ],
+      "font": [
+        "Cmb10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b4",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "A university library wants a daily dashboard showing the number of loans by book category. Staff also\nwant access to reader feedback for qualitative review. The following sources are available:",
+      "text": "A university library wants a daily dashboard showing the number of loans by book category. Staff also\nwant access to reader feedback for qualitative review. The following sources are available:",
+      "markdown": "A university library wants a daily dashboard showing the number of loans by book category. Staff also\nwant access to reader feedback for qualitative review. The following sources are available:",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        122.40806579589844,
+        527.75146484375,
+        144.32566833496094
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.1545556386311849,
+        0.8623389948427288,
+        0.18222937921080926
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.955001831054688
+    },
+    {
+      "id": "p4-b5",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Source\nDescription",
+      "text": "Source\nDescription",
+      "markdown": "Source\nDescription",
+      "latex": null,
+      "bbox_raw": [
+        85.0,
+        156.31805419921875,
+        242.69345092773438,
+        166.28065490722656
+      ],
+      "bbox": [
+        0.1388888888888889,
+        0.19737128055456912,
+        0.39655792635250714,
+        0.2099503218525588
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0.0
+    },
+    {
+      "id": "p4-b6",
+      "page_number": 4,
+      "type": "code",
+      "raw_text": "A: Daily CSV export\nOne loan per row, with fixed columns: loan_id, book_id, and loan_time.",
+      "text": "A: Daily CSV export\nOne loan per row, with fixed columns: loan_id, book_id, and loan_time.",
+      "markdown": "```text\nA: Daily CSV export\nOne loan per row, with fixed columns: loan_id, book_id, and loan_time.\n```",
+      "latex": null,
+      "bbox_raw": [
+        85.0,
+        176.27304077148438,
+        506.5329284667969,
+        186.6602020263672
+      ],
+      "bbox": [
+        0.1388888888888889,
+        0.22256697067106612,
+        0.827668183769276,
+        0.23568207326561513
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10",
+        "Cmtt10",
+        "Cmr10",
+        "Cmtt10",
+        "Cmr10",
+        "Cmtt10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0.424560546875
+    },
+    {
+      "id": "p4-b7",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "B: Official catalogue\nAPI",
+      "text": "B: Official catalogue\nAPI",
+      "markdown": "B: Official catalogue\nAPI",
+      "latex": null,
+      "bbox_raw": [
+        85.0,
+        196.22804260253906,
+        173.87637329101562,
+        218.14564514160156
+      ],
+      "bbox": [
+        0.1388888888888889,
+        0.24776268005371094,
+        0.28411172106375104,
+        0.2754364206333353
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.955001831054688
+    },
+    {
+      "id": "p4-b8",
+      "page_number": 4,
+      "type": "code",
+      "raw_text": "Returns JSON book objects containing book_id, title, category, and a nested\nmetadata object with optional fields.",
+      "text": "Returns JSON book objects containing book_id, title, category, and a nested\nmetadata object with optional fields.",
+      "markdown": "```text\nReturns JSON book objects containing book_id, title, category, and a nested\nmetadata object with optional fields.\n```",
+      "latex": null,
+      "bbox_raw": [
+        193.0,
+        196.22804260253906,
+        528.5303344726562,
+        218.14564514160156
+      ],
+      "bbox": [
+        0.315359477124183,
+        0.24776268005371094,
+        0.8636116576350592,
+        0.2754364206333353
+      ],
+      "font": [
+        "Cmr10",
+        "Cmtt10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.530441284179688
+    },
+    {
+      "id": "p4-b9",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "C: Public catalogue\nwebsite",
+      "text": "C: Public catalogue\nwebsite",
+      "markdown": "C: Public catalogue\nwebsite",
+      "latex": null,
+      "bbox_raw": [
+        85.0,
+        228.13804626464844,
+        170.28982543945312,
+        250.05564880371094
+      ],
+      "bbox": [
+        0.1388888888888889,
+        0.28805308871799046,
+        0.27825134875727636,
+        0.3157268292976148
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.955001831054688
+    },
+    {
+      "id": "p4-b10",
+      "page_number": 4,
+      "type": "code",
+      "raw_text": "HTML listing and detail pages displaying the same catalogue fields as B,\nincluding book_id. Listing pages have next links.",
+      "text": "HTML listing and detail pages displaying the same catalogue fields as B,\nincluding book_id. Listing pages have next links.",
+      "markdown": "```text\nHTML listing and detail pages displaying the same catalogue fields as B,\nincluding book_id. Listing pages have next links.\n```",
+      "latex": null,
+      "bbox_raw": [
+        193.0,
+        228.13804626464844,
+        511.8230895996094,
+        250.48020935058594
+      ],
+      "bbox": [
+        0.315359477124183,
+        0.28805308871799046,
+        0.8363122379078585,
+        0.3162628905941742
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10",
+        "Cmtt10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 12.379562377929688
+    },
+    {
+      "id": "p4-b11",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "D: Feedback text\nfiles",
+      "text": "D: Feedback text\nfiles",
+      "markdown": "D: Feedback text\nfiles",
+      "latex": null,
+      "bbox_raw": [
+        85.0,
+        260.0480651855469,
+        160.4567413330078,
+        281.96563720703125
+      ],
+      "bbox": [
+        0.1388888888888889,
+        0.32834351664841777,
+        0.26218421786439183,
+        0.35601721869574654
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.954986572265625
+    },
+    {
+      "id": "p4-b12",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Plain .txt files containing free-form reader comments, without a fixed record\nschema.",
+      "text": "Plain .txt files containing free-form reader comments, without a fixed record\nschema.",
+      "markdown": "Plain .txt files containing free-form reader comments, without a fixed record\nschema.",
+      "latex": null,
+      "bbox_raw": [
+        193.0,
+        260.0480651855469,
+        526.7869262695312,
+        281.96563720703125
+      ],
+      "bbox": [
+        0.315359477124183,
+        0.32834351664841777,
+        0.8607629514208027,
+        0.35601721869574654
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.954986572265625
+    },
+    {
+      "id": "p4-b13",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Assume A and B are authorized for this project and contain all information needed for the loan\ndashboard. Source C contains no additional catalogue fields. No login automation, real API access, or\nimplementation of a database is required for this question.",
+      "text": "Assume A and B are authorized for this project and contain all information needed for the loan\ndashboard. Source C contains no additional catalogue fields. No login automation, real API access, or\nimplementation of a database is required for this question.",
+      "markdown": "Assume A and B are authorized for this project and contain all information needed for the loan\ndashboard. Source C contains no additional catalogue fields. No login automation, real API access, or\nimplementation of a database is required for this question.",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        295.95806884765625,
+        522.0030517578125,
+        329.8306579589844
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.3736844303632023,
+        0.8529461630029616,
+        0.4164528509583136
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 23.910003662109375
+    },
+    {
+      "id": "p4-b14",
+      "page_number": 4,
+      "type": "list",
+      "raw_text": "1. Classify the data (4 marks)",
+      "text": "1. Classify the data (4 marks)",
+      "markdown": "1. Classify the data (4 marks)",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        340.7934875488281,
+        208.46023559570312,
+        350.756103515625
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.4302948075111466,
+        0.34062129999297897,
+        0.4428738680752841
+      ],
+      "font": [
+        "Cmb10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b15",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Classify each source as structured, semi-structured, or unstructured as supplied. Give one reason for\neach classification. Distinguish the structure of an HTML document from the free-form text it may\ncontain.",
+      "text": "Classify each source as structured, semi-structured, or unstructured as supplied. Give one reason for\neach classification. Distinguish the structure of an HTML document from the free-form text it may\ncontain.",
+      "markdown": "Classify each source as structured, semi-structured, or unstructured as supplied. Give one reason for\neach classification. Distinguish the structure of an HTML document from the free-form text it may\ncontain.",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        357.7485046386719,
+        515.7864379882812,
+        391.6506652832031
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.45170265737206045,
+        0.8427882973664726,
+        0.49450841576162013
+      ],
+      "font": [
+        "Cmr10",
+        "Cmb10",
+        "Cmr10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 23.910003662109375
+    },
+    {
+      "id": "p4-b16",
+      "page_number": 4,
+      "type": "list",
+      "raw_text": "2. Choose acquisition methods (6 marks)",
+      "text": "2. Choose acquisition methods (6 marks)",
+      "markdown": "2. Choose acquisition methods (6 marks)",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        402.6134948730469,
+        256.3006591796875,
+        412.57611083984375
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.5083503723144531,
+        0.41879192676419524,
+        0.5209294328785906
+      ],
+      "font": [
+        "Cmb10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b17",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Choose a source and an acquisition method for each need: (i) daily loan records, (ii) book titles and\ncategories, and (iii) reader feedback. Justify each choice. In particular, explain your choice between the\ncatalogue API and scraping the catalogue website.",
+      "text": "Choose a source and an acquisition method for each need: (i) daily loan records, (ii) book titles and\ncategories, and (iii) reader feedback. Justify each choice. In particular, explain your choice between the\ncatalogue API and scraping the catalogue website.",
+      "markdown": "Choose a source and an acquisition method for each need: (i) daily loan records, (ii) book titles and\ncategories, and (iii) reader feedback. Justify each choice. In particular, explain your choice between the\ncatalogue API and scraping the catalogue website.",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        419.5980529785156,
+        528.697998046875,
+        453.47064208984375
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.5297955214375197,
+        0.8638856177236519,
+        0.572563942032631
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 23.910003662109375
+    },
+    {
+      "id": "p4-b18",
+      "page_number": 4,
+      "type": "list",
+      "raw_text": "3. Design a simple pipeline (6 marks)",
+      "text": "3. Design a simple pipeline (6 marks)",
+      "markdown": "3. Design a simple pipeline (6 marks)",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        464.4335021972656,
+        241.30694580078125,
+        474.3961181640625
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.5864059371177597,
+        0.3942923950993158,
+        0.5989849976818971
+      ],
+      "font": [
+        "Cmb10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b19",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Draw a diagram or give a numbered flow from acquisition to the dashboard and feedback repository.\nInclude: preservation of raw inputs, validation/cleaning, the key used to combine loan and catalogue\ndata, and the final outputs. Specify two concrete data-quality checks and explain what happens to\nrecords that fail them. Do not invent category values for unmatched books.",
+      "text": "Draw a diagram or give a numbered flow from acquisition to the dashboard and feedback repository.\nInclude: preservation of raw inputs, validation/cleaning, the key used to combine loan and catalogue\ndata, and the final outputs. Specify two concrete data-quality checks and explain what happens to\nrecords that fail them. Do not invent category values for unmatched books.",
+      "markdown": "Draw a diagram or give a numbered flow from acquisition to the dashboard and feedback repository.\nInclude: preservation of raw inputs, validation/cleaning, the key used to combine loan and catalogue\ndata, and the final outputs. Specify two concrete data-quality checks and explain what happens to\nrecords that fail them. Do not invent category values for unmatched books.",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        481.4180603027344,
+        518.675537109375,
+        527.2456665039062
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.6078510862408262,
+        0.8475090475643382,
+        0.66571422538372
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10",
+        "Cmr10",
+        "Cmb10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 35.865020751953125
+    },
+    {
+      "id": "p4-b20",
+      "page_number": 4,
+      "type": "list",
+      "raw_text": "4. Explain crawling and scraping (4 marks)",
+      "text": "4. Explain crawling and scraping (4 marks)",
+      "markdown": "4. Explain crawling and scraping (4 marks)",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        538.2085571289062,
+        267.01043701171875,
+        548.171142578125
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.6795562590011442,
+        0.43629156374463846,
+        0.6921352810329862
+      ],
+      "font": [
+        "Cmb10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 0
+    },
+    {
+      "id": "p4-b21",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "If the API were unavailable and you had to use source C, distinguish the crawling step from the\nscraping step in this scenario. Describe two practices that make the collection polite or robust, and\nexplain what each practice achieves.",
+      "text": "If the API were unavailable and you had to use source C, distinguish the crawling step from the\nscraping step in this scenario. Describe two practices that make the collection polite or robust, and\nexplain what each practice achieves.",
+      "markdown": "If the API were unavailable and you had to use source C, distinguish the crawling step from the\nscraping step in this scenario. Describe two practices that make the collection polite or robust, and\nexplain what each practice achieves.",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        555.1930541992188,
+        510.4664306640625,
+        589.065673828125
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.7010013310596196,
+        0.8340954749412786,
+        0.7437697901870265
+      ],
+      "font": [
+        "Cmr10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 23.9100341796875
+    },
+    {
+      "id": "p4-b22",
+      "page_number": 4,
+      "type": "text",
+      "raw_text": "Submission: Written answers of approximately 400-600 words, plus a pipeline diagram or numbered\nflow. No code is required for this question.",
+      "text": "Submission: Written answers of approximately 400-600 words, plus a pipeline diagram or numbered\nflow. No code is required for this question.",
+      "markdown": "Submission: Written answers of approximately 400-600 words, plus a pipeline diagram or numbered\nflow. No code is required for this question.",
+      "latex": null,
+      "bbox_raw": [
+        78.0,
+        597.0285034179688,
+        513.6942138671875,
+        618.9756469726562
+      ],
+      "bbox": [
+        0.12745098039215685,
+        0.7538238679519808,
+        0.8393696305019404,
+        0.7815349077937579
+      ],
+      "font": [
+        "Cmb10",
+        "Cmr10",
+        "Cmr10"
+      ],
+      "font_size": 9.962599754333496,
+      "confidence": 0.96,
+      "source": "native_pdf",
+      "needs_visual_verification": false,
+      "line_spacing": 11.95501708984375
+    }
+  ]
+}

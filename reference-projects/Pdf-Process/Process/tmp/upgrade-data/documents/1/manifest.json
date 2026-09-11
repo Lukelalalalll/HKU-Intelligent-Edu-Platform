@@ -1,0 +1,34 @@
+{
+  "document_id": 1,
+  "filename": "cs5481_hw1.pdf",
+  "file_type": "pdf",
+  "sha256": "3e595f81acfacd34a64b4c2606f586d8cb8a8de404096321319f30da3dc4c8de",
+  "pages": 5,
+  "successful_pages": 5,
+  "failed_pages": 0,
+  "low_confidence_pages": 0,
+  "source": "native_pdf_fallback",
+  "mineru_parse_method": "auto",
+  "mineru_error": "MinerU failed",
+  "omissions": [],
+  "stats": {
+    "block_count": 82,
+    "formula_count": 2,
+    "code_count": 6,
+    "table_count": 0,
+    "image_count": 0
+  },
+  "artifacts": [
+    "source.pdf",
+    "document.md",
+    "manifest.json",
+    "chunks.jsonl"
+  ],
+  "page_files": [
+    "pages/page-001.json",
+    "pages/page-002.json",
+    "pages/page-003.json",
+    "pages/page-004.json",
+    "pages/page-005.json"
+  ]
+}

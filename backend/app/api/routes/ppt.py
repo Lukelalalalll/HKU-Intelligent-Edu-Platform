@@ -1,20 +1,23 @@
 import asyncio
 import json
+import shutil
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import require_roles
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptProviderConfig, PptGenerationJob, User, UserRole
+from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptGenerationJob, User, UserRole, FileAsset
+from app.storage import LocalStorage
 from app.schemas.ppt import ActionIn, BatchIn, ExportIn, MessageIn, OutlineGenerateIn, PagePatchIn, ProjectCreateIn, ProjectPatchIn, ProviderConfigIn, RequirementPatchIn, RequirementChatIn, DocumentPatchIn, StoryboardPatchIn, CheckpointConfirmIn, ThemeSelectIn, LayoutAssignmentsIn, VisualSelectionIn
-from app.services.ppt_agent import PptAgentService, decrypt_api_key, encrypt_api_key
+from app.services.ppt_agent import PptAgentService
 from app.services.ppt_edit_agent import PptEditAgent
-from app.services.ppt_theme import get_theme, list_layouts, list_themes, render_slide_svg
+from app.services.ppt_theme import get_theme, list_layouts, list_themes, render_slide_svg, preview_filename
 
 router = APIRouter(prefix="/api/ppt", tags=["ppt-agent"])
 teacher = Depends(require_roles(UserRole.teacher))
@@ -23,36 +26,6 @@ export_executor = ThreadPoolExecutor(max_workers=2)
 
 def svc(db: Session = Depends(get_db), user: User = teacher) -> PptAgentService:
     return PptAgentService(db, user)
-
-
-@router.get("/settings/provider")
-def get_provider(user: User = teacher, db: Session = Depends(get_db)):
-    c = db.scalar(select(PptProviderConfig).where(PptProviderConfig.user_id == user.id))
-    key = decrypt_api_key(c.api_key_encrypted) if c else settings.llm_api_key
-    return {"base_url": c.base_url if c else settings.llm_base_url, "api_key_configured": bool(key), "api_key_masked": (key[:4] + "••••" + key[-4:]) if len(key) > 8 else ("••••••••" if key else ""), "model": c.model if c else settings.llm_model, "embedding_model": c.embedding_model if c else settings.embedding_model, "timeout_seconds": c.timeout_seconds if c else 120}
-
-
-@router.patch("/settings/provider")
-def patch_provider(payload: ProviderConfigIn, user: User = teacher, db: Session = Depends(get_db)):
-    c = db.scalar(select(PptProviderConfig).where(PptProviderConfig.user_id == user.id))
-    if not c: c = PptProviderConfig(user_id=user.id); db.add(c)
-    c.base_url, c.model, c.embedding_model, c.timeout_seconds = payload.base_url.rstrip("/"), payload.model, payload.embedding_model, payload.timeout_seconds
-    if payload.api_key: c.api_key_encrypted = encrypt_api_key(payload.api_key)
-    db.commit(); return {"message": "模型配置已保存"}
-
-
-@router.post("/settings/provider/test")
-def test_provider(user: User = teacher, db: Session = Depends(get_db)):
-    from app.services.ppt_agent import ProviderGateway
-    ProviderGateway(db, user.id).json("只输出 JSON：{ok:true}", {"ping": "pong"})
-    return {"ok": True}
-
-
-@router.delete("/settings/provider")
-def clear_provider(user: User = teacher, db: Session = Depends(get_db)):
-    c = db.scalar(select(PptProviderConfig).where(PptProviderConfig.user_id == user.id))
-    if c: db.delete(c); db.commit()
-    return {"message": "模型配置已清除"}
 
 
 @router.get("/projects")
@@ -370,3 +343,49 @@ def export_status(project_id: str, export_id: str, service: PptAgentService = De
     job = service.db.scalar(select(PptExportJob).where(PptExportJob.id == export_id, PptExportJob.project_id == project_id))
     if not job: raise HTTPException(404, "导出任务不存在")
     return {"id": job.id, "status": job.status, "error": job.error_message}
+
+@router.get("/exports/available")
+def available_exports(user: User = teacher, db: Session = Depends(get_db)):
+    projects = db.scalars(select(PptProject).where(PptProject.owner_id == user.id).options(selectinload(PptProject.pages))).all()
+    items = []
+    for project in projects:
+        page = sorted(project.pages, key=lambda x: x.sort_order)[0] if project.pages else None
+        if not page or not (page.design_document_json or page.draft_document_json): continue
+        job = db.scalar(select(PptExportJob).where(PptExportJob.project_id == project.id, PptExportJob.status == "completed").order_by(PptExportJob.created_at.desc()))
+        export_path = Path(job.file_path) if job and job.file_path else None
+        if export_path and not export_path.is_file() and (Path.cwd() / export_path).is_file(): export_path = Path.cwd() / export_path
+        if not export_path or not export_path.is_file():
+            # Projects can have a complete, previewable design without a user
+            # having clicked the explicit export button. Material pickers still
+            # need a real file size, so create a cached picker export lazily.
+            try:
+                from app.services.ppt_export import export_project_pptx
+                export_path = settings.ppt_storage_path / f"{project.id}-picker.pptx"
+                export_project_pptx(project, export_path)
+            except Exception:
+                export_path = None
+            if export_path and export_path.is_file():
+                items.append({"export_id": f"project:{project.id}", "project_id": project.id, "title": project.title, "file_name": export_path.name, "size_bytes": export_path.stat().st_size, "created_at": project.updated_at.isoformat(), "cover_preview_url": preview_filename(project.id, page.id)})
+        else:
+            items.append({"export_id": job.id, "project_id": project.id, "title": project.title, "file_name": export_path.name, "size_bytes": export_path.stat().st_size, "created_at": job.created_at.isoformat(), "cover_preview_url": preview_filename(project.id, page.id)})
+    return {"items": sorted(items, key=lambda x: x["created_at"], reverse=True)}
+
+@router.post("/exports/{export_id}/copy", status_code=201)
+def copy_export(export_id: str, user: User = teacher, db: Session = Depends(get_db)):
+    if export_id.startswith("project:"):
+        project_id = export_id.split(":", 1)[1]
+        project = db.scalar(select(PptProject).where(PptProject.id == project_id, PptProject.owner_id == user.id))
+        if not project: raise HTTPException(404, "项目不存在")
+        from app.services.ppt_export import export_project_pptx
+        source = settings.ppt_storage_path / f"{project.id}-picker.pptx"
+        export_project_pptx(project, source)
+        content = source.read_bytes(); storage = LocalStorage(settings.upload_path); key, size, digest = storage.save(source.name, content)
+        asset = FileAsset(original_name=source.name, mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation", extension=".pptx", size_bytes=size, sha256=digest, storage_key=key, uploader_id=user.id)
+        db.add(asset); db.commit(); db.refresh(asset)
+        return {"id": asset.id, "name": asset.original_name, "size_bytes": asset.size_bytes, "storage_key": key}
+    job = db.scalar(select(PptExportJob).join(PptProject).where(PptExportJob.id == export_id, PptProject.owner_id == user.id))
+    if not job or job.status != "completed" or not job.file_path or not Path(job.file_path).is_file(): raise HTTPException(404, "导出文件不存在")
+    source = Path(job.file_path); storage = LocalStorage(settings.upload_path); content = source.read_bytes(); key, size, digest = storage.save(source.name, content)
+    asset = FileAsset(original_name=source.name, mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation", extension=".pptx", size_bytes=size, sha256=digest, storage_key=key, uploader_id=user.id)
+    db.add(asset); db.commit(); db.refresh(asset)
+    return {"id": asset.id, "name": asset.original_name, "size_bytes": asset.size_bytes, "storage_key": key}

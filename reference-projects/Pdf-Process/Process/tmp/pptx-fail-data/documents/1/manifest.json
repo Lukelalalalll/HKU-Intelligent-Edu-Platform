@@ -1,0 +1,30 @@
+{
+  "document_id": 1,
+  "filename": "fail.pptx",
+  "file_type": "pptx",
+  "sha256": "087c9e4f0bcc1c790043cff2cd1096c4a00b271ede03fc9c2ea57ea73aada854",
+  "pages": 3,
+  "successful_pages": 2,
+  "failed_pages": 1,
+  "low_confidence_pages": 0,
+  "source": "python-pptx",
+  "rendering": {
+    "status": "unavailable",
+    "reason": "LibreOffice/soffice not found; retained structured JSON only",
+    "rendered_pages": 0
+  },
+  "artifacts": [
+    "source.pptx",
+    "document.md",
+    "manifest.json",
+    "chunks.jsonl"
+  ],
+  "slide_files": [
+    "slides/slide-001.json",
+    "slides/slide-003.json"
+  ],
+  "page_files": [
+    "pages/page-001.json",
+    "pages/page-003.json"
+  ]
+}

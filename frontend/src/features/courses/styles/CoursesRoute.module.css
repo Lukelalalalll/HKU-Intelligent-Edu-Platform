@@ -253,3 +253,37 @@
 @media (max-width: 900px) { .zoomWorkspace { grid-template-columns: 220px minmax(0, 1fr); } .zoomSidebar { padding: 23px 16px 20px; } .zoomSidebarBrand { padding-inline: 7px; } .zoomCourseNav a { min-height: 39px; padding-inline: 10px; font-size: .76rem; } .zoomTopbar { gap: 18px; min-height: 82px; padding: 0 24px; } .zoomProductNav span { padding: 0 10px; } .zoomContent, .participantContent, .materialsContent, .discussionContent { padding: 25px 24px 32px; } .zoomTableHeader, .zoomTableRow { grid-template-columns: minmax(110px, 1fr) minmax(145px, 1.3fr) minmax(84px, .8fr) minmax(120px, .9fr); gap: 12px; padding: 0 15px; } }
 @media (max-width: 620px) { .pageHeading { margin-bottom: 20px; } .layout { gap: 14px; } .sidebar { display: flex; overflow-x: auto; padding: 13px; } .sidebarIntro { min-width: 170px; border-bottom: 0; border-right: 1px solid #dcebe3; padding: 7px 14px 7px 2px; } .previousLabel { display: none; } .yearGroup { min-width: 218px; } .main { padding: 15px; } .toolbar { align-items: stretch; flex-direction: column; } .search { min-width: 0; width: 100%; } .courseGrid { grid-template-columns: 1fr; } .detailHero { grid-template-columns: 1fr; gap: 12px; } .detailHeroPanel { min-height: 0; padding: 16px 22px; } .detailHeroMain { align-items: flex-start; } .detailHeroAside { grid-template-columns: 1fr; align-content: start; gap: 12px; } .zoomWorkspace { display: block; min-height: 0; } .zoomSidebar { border-right: 0; border-bottom: 1px solid #e5ebf0; padding: 12px; } .zoomSidebarBrand { border-bottom: 0; padding: 0 4px 8px; } .zoomSidebarTerm { padding: 0 4px 8px; } .zoomCourseNav { display: flex; gap: 3px; overflow-x: auto; } .zoomCourseNav a { min-width: max-content; border-left: 0; border-bottom: 3px solid transparent; border-radius: 5px; } .zoomCourseNav a.zoomCourseNavActive { border-bottom-color: #263746; } .zoomMain { display: block; } .zoomTopbar { min-height: 66px; padding: 0 15px; } .zoomProductNav span { padding: 0 7px; font-size: .72rem; } .zoomContent, .participantContent, .materialsContent, .discussionContent { padding: 16px 14px 20px; } .zoomTimezone { align-items: flex-start; font-size: .7rem; } .zoomWorkspaceHeading { align-items: flex-start; flex-direction: column; margin: 14px 0; } .zoomMeetingTabs { margin-inline: -14px; padding-inline: 14px; } .zoomMeetingTabs button { min-height: 42px; padding: 0 10px; font-size: .68rem; } .zoomTableCard { overflow-x: auto; } .zoomTableHeader, .zoomTableRow { min-width: 650px; } .participantGrid { grid-template-columns: 1fr; } .materialsWorkspace { display: block; } .chapterPanel { border-right: 0; border-bottom: 1px solid #e0ebe5; } .chapterList { display: flex; overflow-x: auto; padding-bottom: 4px; } .chapterItem { min-width: 190px; } .materialsMain { padding: 18px 14px 22px; } .chapterTitleRow { align-items: stretch; flex-direction: column; } .materialGrid { grid-template-columns: 1fr; } .discussionComposer, .discussionReplyComposer { padding: 14px; } .discussionThread { padding: 14px; } .discussionReplies, .discussionReplyComposer { margin-left: 0; } .discussionReplies { padding-left: 12px; } .discussionHeading { margin-bottom: 15px; } }
 @media (prefers-reduced-motion: reduce) { .detailHeroAside, .detailHeroAside::before, .detailHeroAside::after { animation: none; } }
+
+/* Flat course content modules */
+.materialsContent, .assignmentsContent { background: #f8fcf9; }
+.materialsHeaderActions { display: flex; gap: 10px; align-items: center; }
+.materialsHeaderActions .primary-action, .materialsHeaderActions .secondary-action { margin: 0; }
+.materialGrid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.materialCard { min-height: 150px; padding: 18px; border: 1px solid #deebe5; border-radius: 14px; background: #fff; box-shadow: 0 8px 20px rgba(42,104,64,.05); }
+.materialInfo small { color: #769384; }
+.assignmentsContent { display: flex; width: 100%; min-width: 0; min-height: 100%; flex-direction: column; overflow: auto; padding: 30px 34px 38px; }
+.assignmentComposer { display: grid; gap: 14px; margin: 2px 0 22px; padding: 20px; border: 1px solid #dcebe3; border-radius: 16px; background: #fff; box-shadow: 0 10px 24px rgba(42,104,64,.05); }
+.assignmentComposer input, .assignmentComposer textarea { width: 100%; border: 1px solid #d6e6dc; border-radius: 10px; padding: 11px 13px; color: #294638; background: #fbfefc; font: inherit; }
+.assignmentComposer textarea { min-height: 90px; resize: vertical; }
+.assignmentFormRow { display: grid; grid-template-columns: 1fr 180px; gap: 14px; }
+.assignmentFormRow label { display: grid; gap: 7px; color: #6b8c7a; font-size: .75rem; font-weight: 700; }
+.assignmentComposerActions { display: flex; justify-content: flex-end; gap: 10px; }
+.assignmentGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.assignmentCard { display: flex; flex-direction: column; justify-content: space-between; min-height: 190px; padding: 20px; border: 1px solid #deebe5; border-radius: 16px; background: #fff; box-shadow: 0 10px 24px rgba(42,104,64,.05); }
+.assignmentCard h3 { margin: 10px 0 7px; color: #294638; font-size: 1.05rem; }
+.assignmentCard p { margin: 0; color: #6c8174; line-height: 1.55; }
+.assignmentCard footer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; color: #718c7c; font-size: .72rem; }
+.assignmentCard footer i { margin-right: 4px; color: #5d9b73; }
+.assignmentCard footer button { margin-left: auto; }
+.assignmentStatus { display: inline-flex; padding: 5px 9px; border-radius: 999px; background: #e8f5eb; color: #4d8a60; font-size: .65rem; font-weight: 800; }
+@media (max-width: 620px) { .materialsHeaderActions { width: 100%; } .materialsHeaderActions button { flex: 1; } .assignmentsContent { padding: 18px 14px 22px; } .assignmentFormRow { grid-template-columns: 1fr; } .assignmentComposerActions { flex-direction: column; } .assignmentComposerActions button { width: 100%; } .assignmentGrid, .materialGrid { grid-template-columns: 1fr; } }
+.assignmentAttachments { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+.assignmentAttachments a { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 6px 9px; border-radius: 8px; background: #f0f8f2; color: #4b8a60; font-size: .7rem; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Keep the two-column chapter layout while removing the extra inner panel. */
+.materialsMain { background: #f8fcf9; padding: 28px 30px 34px; }
+.materialsMain .materialsState { min-height: 360px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.materialsMain .materialCard { background: #fff; }
+/* Let the chapter sidebar and file area sit directly in the course module. */
+.materialsWorkspace { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.chapterPanel { border-radius: 0; background: #f4faf6; }
+.materialsMain { border-radius: 0; }

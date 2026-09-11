@@ -1,0 +1,70 @@
+{
+  "page": 33,
+  "slide_number": 33,
+  "width": 9144000,
+  "height": 6858000,
+  "title": "Slide 33",
+  "body_text": "import pandas as pd\nvalue = 1",
+  "notes": "",
+  "tables": [],
+  "images": [],
+  "charts": [],
+  "formulas": [],
+  "code_blocks": [
+    "import pandas as pd\nvalue = 1"
+  ],
+  "blocks": [
+    {
+      "id": "p33-b1",
+      "type": "heading",
+      "raw_text": "Slide 33",
+      "text": "Slide 33",
+      "markdown": "### Slide 33",
+      "latex": null,
+      "bbox": [
+        0.05,
+        0.04004636920384952,
+        0.95,
+        0.20671303587051618
+      ],
+      "bbox_raw": [
+        457200,
+        274638,
+        8686800,
+        1417638
+      ],
+      "font": [],
+      "font_size": 0,
+      "confidence": 0.95,
+      "source": "pptx",
+      "needs_visual_verification": false
+    },
+    {
+      "id": "p33-b2",
+      "type": "code",
+      "raw_text": "import pandas as pd\nvalue = 1",
+      "text": "import pandas as pd\nvalue = 1",
+      "markdown": "```text\nimport pandas as pd\nvalue = 1\n```",
+      "latex": null,
+      "bbox": [
+        0.05,
+        0.23333333333333334,
+        0.95,
+        0.8932871099445903
+      ],
+      "bbox_raw": [
+        457200,
+        1600200,
+        8686800,
+        6126163
+      ],
+      "font": [],
+      "font_size": 0,
+      "confidence": 0.95,
+      "source": "pptx",
+      "needs_visual_verification": false
+    }
+  ],
+  "confidence": 0.95,
+  "warnings": []
+}

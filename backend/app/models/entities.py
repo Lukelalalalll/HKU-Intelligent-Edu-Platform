@@ -111,6 +111,18 @@ class Assignment(Base):
 
     course: Mapped[Course] = relationship(back_populates="assignments")
     submissions: Mapped[list["Submission"]] = relationship(back_populates="assignment", cascade="all, delete-orphan")
+    attachments: Mapped[list["AssignmentAttachment"]] = relationship(back_populates="assignment", cascade="all, delete-orphan", order_by="AssignmentAttachment.sort_order")
+
+
+class AssignmentAttachment(Base):
+    __tablename__ = "assignment_attachments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    assignment_id: Mapped[str] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    file_asset_id: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"), unique=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    assignment: Mapped[Assignment] = relationship(back_populates="attachments")
+    file_asset: Mapped["FileAsset"] = relationship()
 
 
 class Submission(Base):

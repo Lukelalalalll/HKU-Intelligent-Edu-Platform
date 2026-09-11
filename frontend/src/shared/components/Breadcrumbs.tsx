@@ -45,10 +45,10 @@ export function buildBreadcrumbs(pathname: string): BreadcrumbItem[] {
     return [{ label: "作业", href: "/assignments" }, { label: "作业批改" }];
   }
   if (path === "/teacher/courseware-agent") {
-    return [{ label: "课件 Agent" }];
+    return [{ label: "PPT Agent" }];
   }
   if (path.startsWith("/teacher/courseware-agent/")) {
-    return [{ label: "课件 Agent", href: "/teacher/courseware-agent" }, { label: "项目工作区" }];
+    return [{ label: "PPT Agent", href: "/teacher/courseware-agent" }, { label: "项目工作区" }];
   }
   if (path === "/admin") {
     return [{ label: "管理后台" }];

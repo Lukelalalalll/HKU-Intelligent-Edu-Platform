@@ -1,0 +1,28 @@
+{
+  "document_id": 1,
+  "filename": "sample.pptx",
+  "file_type": "pptx",
+  "sha256": "5cacf37a48edda92e7bfb2bf5e89748b4473464e644292d208374ca9a7120696",
+  "pages": 1,
+  "successful_pages": 1,
+  "failed_pages": 0,
+  "low_confidence_pages": 0,
+  "source": "python-pptx",
+  "rendering": {
+    "status": "unavailable",
+    "reason": "LibreOffice/soffice not found; retained structured JSON only",
+    "rendered_pages": 0
+  },
+  "artifacts": [
+    "source.pptx",
+    "document.md",
+    "manifest.json",
+    "chunks.jsonl"
+  ],
+  "slide_files": [
+    "slides/slide-001.json"
+  ],
+  "page_files": [
+    "pages/page-001.json"
+  ]
+}

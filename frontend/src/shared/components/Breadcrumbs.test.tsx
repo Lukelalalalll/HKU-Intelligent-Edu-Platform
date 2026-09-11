@@ -21,7 +21,7 @@ describe("buildBreadcrumbs", () => {
 
   it("builds the PPT project hierarchy and normalizes trailing slashes", () => {
     expect(buildBreadcrumbs("/teacher/courseware-agent/project-9/")).toEqual([
-      { label: "课件 Agent", href: "/teacher/courseware-agent" },
+      { label: "PPT Agent", href: "/teacher/courseware-agent" },
       { label: "项目工作区" },
     ]);
   });

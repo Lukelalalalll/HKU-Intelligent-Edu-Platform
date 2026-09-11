@@ -288,6 +288,27 @@ def material_status(course_id: str, material_id: str, user: User = Depends(curre
     ingestion = db.scalar(select(CourseMaterialIngestion).where(CourseMaterialIngestion.material_id == material_id))
     return {"material_id": material_id, "status": ingestion.status if ingestion else "pending", "error_message": ingestion.error_message if ingestion else None}
 
+@router.post("/{course_id}/materials/assets", response_model=CourseMaterialOut, status_code=201)
+def attach_material_asset(course_id: str, file_asset_id: str, kind: str = Query(..., pattern="^(lecture|tutorial)$"), chapter_id: str | None = None, chapter_title: str | None = None, title: str | None = None, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    course = _course_for_user(course_id, user, db, manage=True)
+    if chapter_id:
+        chapter = _chapter_or_404(course, chapter_id)
+        if chapter.kind != kind: raise HTTPException(400, "Chapter kind mismatch")
+    else:
+        name = (chapter_title or "").strip()
+        if not name or len(name) > 200: raise HTTPException(400, "请输入 chapter 名称")
+        chapter = next((x for x in course.chapters if x.kind == kind and x.title.casefold() == name.casefold()), None)
+        if not chapter:
+            chapter = CourseChapter(course_id=course.id, kind=kind, title=name, sort_order=len([x for x in course.chapters if x.kind == kind])); db.add(chapter)
+    asset = db.get(FileAsset, file_asset_id)
+    if not asset or asset.uploader_id != user.id: raise HTTPException(404, "File asset not found")
+    if db.scalar(select(CourseMaterial).where(CourseMaterial.file_asset_id == asset.id)): raise HTTPException(409, "File already attached")
+    asset.course_id = course.id
+    material = CourseMaterial(chapter=chapter, file_asset=asset, title=(title or asset.original_name).strip(), uploaded_by=user.id)
+    db.add(material); db.flush(); db.add(CourseMaterialIngestion(material_id=material.id, status="pending")); db.commit(); db.refresh(material)
+    queue_ingestion(material.id)
+    return _material_out(material)
+
 @router.post("/{course_id}/materials/{material_id}/reindex")
 def reindex_material(course_id: str, material_id: str, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
     course = _course_for_user(course_id, user, db, manage=True)

@@ -67,61 +67,6 @@ function Chat({ project, page, messages, requirement, sources, onSent, onUpload,
   return <section className="ppt-conversation"><div className="ppt-conversation-head"><div><span className="ppt-kicker">AI 课件协作</span><strong>{page ? `正在讨论：第 ${page.sort_order + 1} 页` : "先聊清楚，再开始生成"}</strong></div><span className="ppt-online"><i /> 在线</span></div><div className="ppt-conversation-stream" ref={streamRef}>{messages.length || optimistic ? <>{messages.map((message) => <div key={message.id} className={`ppt-message ppt-message-enter ${message.role === "user" ? "user" : "assistant"}`}><div>{message.content_md}</div>{message.payload?.action_type && <small>已执行：{message.payload.action_type}</small>}</div>)}{optimistic && <div className="ppt-message user ppt-message-enter ppt-message-pending"><div>{optimistic.content_md}</div><small>发送中…</small></div>}</> : <div className="ppt-chat-empty"><div className="ppt-chat-orb">✦</div><h3>告诉我你要讲什么</h3><p>我会先追问受众、时长和重点，再把讨论整理成可确认的大纲。</p></div>}{sending && <div className="ppt-message assistant ppt-agent-live ppt-message-enter"><div>{streamText || "正在理解你的需求…"}<span className="ppt-typing-caret" /></div>{activities.map((event, index) => <small key={`${event.trace?.tool}-${index}`}>{event.trace?.status === "success" ? "✓" : event.trace?.status === "error" ? "!" : "⋯"} {event.trace?.message || event.status}</small>)}</div>}{!page && question?.options?.length ? <div className="ppt-requirement-options">{question.options.map((option: string) => <button key={option} onClick={() => void send("", option)} disabled={sending}>{option}</button>)}</div> : null}{!page && sources?.length ? <div className="ppt-attachment-list">{sources.map((source) => <span key={source.id}>📎 {source.title}</span>)}</div> : null}</div><div className="ppt-composer"><textarea value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder={page ? "告诉 Agent 如何修改当前页…" : "补充你的需求，或点击上方选项…"} rows={3} disabled={sending} /><div className="ppt-composer-tools">{onUpload && <label className="ppt-upload-button">＋ 资料<input type="file" multiple accept=".pdf,.md,.markdown,image/png,image/jpeg,image/webp" onChange={(e) => { if (e.target.files?.length) onUpload(e.target.files); e.currentTarget.value = ""; }} /></label>}{sending ? <button onClick={stop} aria-label="停止">■</button> : <button onClick={() => void send()} disabled={!value.trim()} aria-label="发送">↑</button>}</div><small>Enter 发送 · Shift + Enter 换行 · 支持 PDF、Markdown、图片</small></div></section>;
 }
 
-function ProviderSettings() {
-  const [config, setConfig] = useState({ base_url: "https://api.deepseek.com", api_key: "", model: "deepseek-v4-flash", embedding_model: "", timeout_seconds: 120 });
-  const [configuredKey, setConfiguredKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-
-  useEffect(() => {
-    pptApi.provider().then(({ data }) => {
-      setConfig({ base_url: data.base_url, api_key: "", model: data.model, embedding_model: data.embedding_model, timeout_seconds: data.timeout_seconds });
-      setConfiguredKey(data.api_key_masked);
-    }).catch(() => toast.error("模型配置读取失败")).finally(() => setLoading(false));
-  }, []);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await pptApi.saveProvider({ ...config, timeout_seconds: Number(config.timeout_seconds), ...(config.api_key.trim() ? { api_key: config.api_key.trim() } : {}) });
-      const { data } = await pptApi.provider();
-      setConfiguredKey(data.api_key_masked);
-      setConfig((current) => ({ ...current, api_key: "" }));
-      toast.success("课件 Agent 配置已保存");
-    } catch (error: any) { toast.error(error.response?.data?.detail || "配置保存失败"); }
-    finally { setSaving(false); }
-  };
-
-  const test = async () => {
-    setTesting(true);
-    try { await pptApi.testProvider(); toast.success("连接测试成功"); }
-    catch (error: any) { toast.error(error.response?.data?.detail || "连接测试失败"); }
-    finally { setTesting(false); }
-  };
-
-  const clear = async () => {
-    if (!window.confirm("清除后，课件 Agent 将无法调用模型，确定继续吗？")) return;
-    try { await pptApi.clearProvider(); setConfiguredKey(""); setConfig((current) => ({ ...current, api_key: "" })); toast.success("课件 Agent 配置已清除"); }
-    catch (error: any) { toast.error(error.response?.data?.detail || "配置清除失败"); }
-  };
-
-  return <aside className="ppt-provider-card" aria-label="课件 Agent 模型配置">
-    <div className="ppt-provider-heading"><div className="ppt-provider-icon">✦</div><div><span className="ppt-kicker">AI PROVIDER</span><h2>课件 Agent 配置</h2></div><span className={`ppt-provider-status ${configuredKey ? "is-ready" : ""}`}><i />{configuredKey ? "已配置" : "未配置"}</span></div>
-    <p className="ppt-provider-description">配置仅用于课件 Agent 的生成、对话与编辑，不会影响平台其他 AI 业务。</p>
-    {loading ? <div className="ppt-provider-loading">正在读取配置…</div> : <div className="ppt-provider-form">
-      <label>API Base URL<input value={config.base_url} onChange={(e) => setConfig((current) => ({ ...current, base_url: e.target.value }))} placeholder="https://api.deepseek.com" /></label>
-      <label>API Key<div className="ppt-provider-key-wrap"><input type={showKey ? "text" : "password"} value={config.api_key} onChange={(e) => setConfig((current) => ({ ...current, api_key: e.target.value }))} placeholder={configuredKey ? `已保存：${configuredKey}` : "粘贴你的 API Key"} autoComplete="off" /><button type="button" onClick={() => setShowKey((value) => !value)} aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}>{showKey ? "隐藏" : "显示"}</button></div></label>
-      <div className="ppt-provider-field-row"><label>模型<input list="deepseek-model-options" value={config.model} onChange={(e) => setConfig((current) => ({ ...current, model: e.target.value }))} /><datalist id="deepseek-model-options">{deepseekModels.map((model) => <option key={model} value={model} />)}</datalist><small>可选：Flash、Pro；Vision-Exp 支持图片输入</small></label><label>超时（秒）<input type="number" min={10} max={600} value={config.timeout_seconds} onChange={(e) => setConfig((current) => ({ ...current, timeout_seconds: Number(e.target.value) || 120 }))} /></label></div>
-      <label>Embedding 模型（可选）<input value={config.embedding_model} onChange={(e) => setConfig((current) => ({ ...current, embedding_model: e.target.value }))} placeholder="DeepSeek 暂不提供 Embedding，可留空" /></label>
-      <div className="ppt-provider-actions"><button className="ppt-primary" type="button" onClick={() => void save()} disabled={saving}>{saving ? "保存中…" : "保存配置"}</button><button className="ppt-provider-test" type="button" onClick={() => void test()} disabled={testing || !configuredKey}>{testing ? "测试中…" : "测试连接"}</button></div>
-      {configuredKey && <button className="ppt-provider-clear" type="button" onClick={() => void clear()}>清除 API Key</button>}
-    </div>}
-    <small className="ppt-provider-note"><i className="fas fa-lock" aria-hidden="true" /> API Key 将加密保存，仅用于当前教师账号的课件 Agent。</small>
-  </aside>;
-}
-
 function OutlineBoard({ pages, onSelect, onReorder, onConfirm, onUpdate }: { pages: PptPage[]; onSelect: (page: PptPage) => void; onReorder: (ids: string[]) => void; onConfirm: () => void; onUpdate: (page: PptPage, payload: PptPagePatch) => Promise<PptPage> }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [editingPage, setEditingPage] = useState<PptPage | null>(null);
@@ -170,9 +115,9 @@ function VisualStep({ pages, running, onRun, onContinue, onSave }: { pages: PptP
   const [index, setIndex] = useState(0); const [draft, setDraft] = useState<Record<string, string[]>>({}); const page = pages[index] || pages[0];
   const autoStarted = useRef(false);
   useEffect(() => { if (pages.length && !running && pages.every((p) => !(p.asset_manifest || []).length) && !autoStarted.current) { autoStarted.current = true; onRun(); } }, [pages.length, running, onRun]);
-  const assets = (page?.asset_manifest || []).slice(0, 6); const selected = draft[page?.id || ""] ?? page?.selected_asset_ids ?? []; const ready = pages.filter((p) => p.statuses?.visual === "ready" || p.statuses?.visual === "failed" || (p.asset_manifest || []).length > 0).length; const progress = pages.length ? Math.round(ready / pages.length * 100) : 0;
+  const assets = (page?.asset_manifest || []).slice(0, 6); const selected = draft[page?.id || ""] ?? page?.selected_asset_ids ?? []; const pageVisualStatus = page?.visual_plan?.asset_status || page?.statuses?.visual || "empty"; const pageSearching = pageVisualStatus === "running" || (running && pageVisualStatus !== "ready" && pageVisualStatus !== "failed" && pageVisualStatus !== "degraded"); const ready = pages.filter((p) => p.statuses?.visual === "ready" || p.statuses?.visual === "failed" || p.statuses?.visual === "degraded" || (p.asset_manifest || []).length > 0).length; const progress = pages.length ? Math.round(ready / pages.length * 100) : 0;
   const toggle = (id: string) => setDraft((all) => { const current = all[page.id] ?? selected; return { ...all, [page.id]: current.includes(id) ? current.filter((x) => x !== id) : current.length < 6 ? [...current, id] : current }; });
-  return <section className="ppt-visual-step"><div className="ppt-board-head"><div><span className="ppt-kicker">VISUAL RESEARCH</span><h2>审核每页的视觉素材</h2><p>左侧查看页面大纲，右侧勾选将用于后续排版的图片（每页最多 6 张）。</p></div><span className="ppt-theme-auto-hint">{ready}/{pages.length} 页已完成</span></div><div className="ppt-visual-progress"><div className="ppt-visual-progress-head"><b>{running ? "正在研究图片…" : progress === 100 ? "视觉素材已就绪" : "等待开始视觉研究"}</b><span>{progress}%</span></div><div className="ppt-visual-progress-track"><i style={{ width: `${progress}%` }} /></div></div><div className="ppt-visual-review"><aside className="ppt-visual-outline"><div className="ppt-visual-review-title">页面 Outline</div>{pages.map((p, i) => <button key={p.id} className={i === index ? "active" : ""} onClick={() => setIndex(i)}><span>第 {i + 1} 页 · {p.section_title || "内容章节"}</span><b>{p.title}</b><small>{(p.bullets || []).slice(0, 2).join(" · ") || "暂无要点"}</small></button>)}</aside><main className="ppt-visual-assets"><div className="ppt-visual-review-title"><span>第 {(page?.sort_order || index) + 1} 页 · {page?.title}</span><small>{selected.length}/6 已选择</small></div><ul className="ppt-visual-bullets">{(page?.bullets || []).map((b) => <li key={b}>{b}</li>)}</ul><div className="ppt-visual-asset-grid">{assets.map((asset) => <button key={asset.id} className={`ppt-visual-asset ${selected.includes(asset.id) ? "selected" : ""}`} onClick={() => toggle(asset.id)}><div>{(asset.public_url || asset.src) ? <img src={asset.public_url || asset.src} alt={asset.alt || page.title} /> : <span>无预览</span>}<i>{selected.includes(asset.id) ? "✓" : ""}</i></div><b>{asset.title || "未命名素材"}</b><small>{asset.license || "来源已记录"} · {Math.round((asset.score || 0) * 100)}%</small></button>)}{!assets.length && <p className="ppt-visual-empty">暂无候选图片，可继续使用纯文本或占位布局。</p>}</div></main></div><div className="ppt-visual-step-actions"><button className="ppt-ghost" onClick={() => page && setDraft((all) => ({ ...all, [page.id]: assets.map((a) => a.id) }))}>全选</button><button className="ppt-ghost" onClick={() => page && setDraft((all) => ({ ...all, [page.id]: [] }))}>取消全选</button><button className="ppt-primary" onClick={() => page && void onSave(page, selected)} disabled={!page}>确认本页选择</button><button className="ppt-primary" onClick={onContinue} disabled={running || !pages.length}>继续选择主题</button><button className="ppt-ghost" onClick={onRun} disabled={running}>{running ? "正在检索…" : "重新研究全部页面"}</button></div></section>;
+  return <section className="ppt-visual-step"><div className="ppt-board-head"><div><span className="ppt-kicker">VISUAL RESEARCH</span><h2>审核每页的视觉素材</h2><p>左侧查看页面大纲，右侧勾选将用于后续排版的图片（每页最多 6 张）。</p></div><span className="ppt-theme-auto-hint">{ready}/{pages.length} 页已完成</span></div><div className="ppt-visual-progress"><div className="ppt-visual-progress-head"><b>{running ? "正在研究图片…" : progress === 100 ? "视觉素材已就绪" : "等待开始视觉研究"}</b><span>{progress}%</span></div><div className="ppt-visual-progress-track"><i style={{ width: `${progress}%` }} /></div></div><div className="ppt-visual-review"><aside className="ppt-visual-outline"><div className="ppt-visual-review-title">页面 Outline</div>{pages.map((p, i) => <button key={p.id} className={i === index ? "active" : ""} onClick={() => setIndex(i)}><span>第 {i + 1} 页 · {p.section_title || "内容章节"}</span><b>{p.title}</b><small>{(p.bullets || []).slice(0, 2).join(" · ") || "暂无要点"}</small></button>)}</aside><main className="ppt-visual-assets"><div className="ppt-visual-review-title"><span>第 {(page?.sort_order || index) + 1} 页 · {page?.title}</span><small>{selected.length}/6 已选择</small></div><ul className="ppt-visual-bullets">{(page?.bullets || []).map((b) => <li key={b}>{b}</li>)}</ul><div className="ppt-visual-asset-grid">{assets.map((asset) => <button key={asset.id} className={`ppt-visual-asset ${selected.includes(asset.id) ? "selected" : ""}`} onClick={() => toggle(asset.id)}><div>{(asset.public_url || asset.src) ? <img src={asset.public_url || asset.src} alt={asset.alt || page.title} /> : <span>无预览</span>}<i>{selected.includes(asset.id) ? "✓" : ""}</i></div><b>{asset.title || "未命名素材"}</b><small>{asset.license || "来源已记录"} · {Math.round((asset.score || 0) * 100)}%</small></button>)}{!assets.length && <p className="ppt-visual-empty">{pageSearching ? "正在搜索候选图片，请稍候…" : pageVisualStatus === "failed" ? `图片搜索失败${page?.visual_plan?.asset_error ? `：${page.visual_plan.asset_error}` : "，可重试"}` : pageVisualStatus === "degraded" ? "图片来源暂不可用，可继续使用纯文本或占位布局。" : "暂无候选图片，可继续使用纯文本或占位布局。"}</p>}</div></main></div><div className="ppt-visual-step-actions"><button className="ppt-ghost" onClick={() => page && setDraft((all) => ({ ...all, [page.id]: assets.map((a) => a.id) }))}>全选</button><button className="ppt-ghost" onClick={() => page && setDraft((all) => ({ ...all, [page.id]: [] }))}>取消全选</button><button className="ppt-primary" onClick={() => page && void onSave(page, selected)} disabled={!page}>确认本页选择</button><button className="ppt-primary" onClick={onContinue} disabled={running || !pages.length}>继续选择主题</button><button className="ppt-ghost" onClick={onRun} disabled={running}>{running ? "正在检索…" : "重新研究全部页面"}</button></div></section>;
 }
 
 function ThemeStep({ themes, selected, onSelect, disabled }: { themes: PptTheme[]; selected?: string | null; onSelect: (id: string) => void; disabled?: boolean }) {
@@ -296,7 +241,6 @@ export default function CoursewareAgent() {
             {projects.map((project) => <article key={project.id} className={`ppt-recent-card ${removingIds[project.id] ? "is-removing" : ""}`}><button type="button" className="ppt-recent-card-main" onClick={() => openProject(project)}><div className="ppt-mini-preview">{previewSources[project.id] && !previewErrors[project.id] ? <img src={previewSources[project.id]} alt={`${project.title} 首页预览`} onError={() => setPreviewErrors((items) => ({ ...items, [project.id]: true }))} /> : <div className="ppt-mini-fallback"><span>{stageLabels[project.current_stage] || "进行中"}</span><b>{project.page_count || "—"}</b></div>}</div><strong>{project.title}</strong><small>{project.request_text}</small></button><button type="button" className="ppt-project-delete" onClick={(event) => void removeProject(event, project)} disabled={deletingId === project.id} aria-label={`删除项目 ${project.title}`} title="删除项目"><i className="fas fa-trash" /></button></article>)}
             {!projects.length && <div className="ppt-recent-empty">还没有项目，从左侧告诉 Agent 你的教学想法开始。</div>}
           </div></div>
-          <ProviderSettings />
       </div>
       <HKUConfirmDialog open={Boolean(deleteCandidate)} scope="surface" eyebrow="DELETE PROJECT" title="删除这个课件项目？" description={deleteCandidate ? <>“{deleteCandidate.title}”中的资料、页面和导出文件都会被删除，且无法恢复。</> : undefined} icon={<i className="fas fa-trash" />} onClose={() => { if (!deletingId) setDeleteCandidate(null); }} onConfirm={confirmRemoveProject} confirmLabel="确认删除" loading={Boolean(deletingId)} labelledBy="ppt-delete-title" />
     </div>
@@ -368,3 +312,5 @@ function Presentation({ pages, index, onIndexChange, onClose }: { pages: PptPage
     <div className="ppt-presentation-footer">{index + 1} / {pages.length}<span>← → 切换 · Esc 退出</span></div>
   </div>;
 }
+
+

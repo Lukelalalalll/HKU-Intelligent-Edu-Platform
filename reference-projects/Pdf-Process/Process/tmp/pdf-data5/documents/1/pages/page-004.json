@@ -1,0 +1,337 @@
+{
+  "page": 4,
+  "width": 612.0,
+  "height": 792.0,
+  "blocks": [
+    {
+      "id": "p4-b1",
+      "type": "text",
+      "text": "4",
+      "markdown": "4",
+      "latex": null,
+      "bbox": [
+        0.4959302416034773,
+        0.937094023733428,
+        0.5040696088005515,
+        0.9496730457652699
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b2",
+      "type": "text",
+      "text": "Question 3 - Data Sources and Acquisition Planning",
+      "markdown": "Question 3 - Data Sources and Acquisition Planning",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.09495186083244556,
+        0.6655506807215074,
+        0.1130657485037139
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b3",
+      "type": "text",
+      "text": "20 marks",
+      "markdown": "20 marks",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.13184789214471374,
+        0.19256601769939746,
+        0.1444269334427034
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b4",
+      "type": "text",
+      "text": "A university library wants a daily dashboard showing the number of loans by book category. Staff also\nwant access to reader feedback for qualitative review. The following sources are available:",
+      "markdown": "A university library wants a daily dashboard showing the number of loans by book category. Staff also\nwant access to reader feedback for qualitative review. The following sources are available:",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.1545556386311849,
+        0.8623389948427288,
+        0.18222937921080926
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b5",
+      "type": "text",
+      "text": "Source\nDescription",
+      "markdown": "Source\nDescription",
+      "latex": null,
+      "bbox": [
+        0.1388888888888889,
+        0.19737128055456912,
+        0.39655792635250714,
+        0.2099503218525588
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b6",
+      "type": "code",
+      "text": "A: Daily CSV export\nOne loan per row, with fixed columns: loan_id, book_id, and loan_time.",
+      "markdown": "```python\nA: Daily CSV export\nOne loan per row, with fixed columns: loan_id, book_id, and loan_time.\n```",
+      "latex": null,
+      "bbox": [
+        0.1388888888888889,
+        0.22256697067106612,
+        0.827668183769276,
+        0.23568207326561513
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b7",
+      "type": "text",
+      "text": "B: Official catalogue\nAPI",
+      "markdown": "B: Official catalogue\nAPI",
+      "latex": null,
+      "bbox": [
+        0.1388888888888889,
+        0.24776268005371094,
+        0.28411172106375104,
+        0.2754364206333353
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b8",
+      "type": "code",
+      "text": "Returns JSON book objects containing book_id, title, category, and a nested\nmetadata object with optional fields.",
+      "markdown": "```python\nReturns JSON book objects containing book_id, title, category, and a nested\nmetadata object with optional fields.\n```",
+      "latex": null,
+      "bbox": [
+        0.315359477124183,
+        0.24776268005371094,
+        0.8636116576350592,
+        0.2754364206333353
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b9",
+      "type": "text",
+      "text": "C: Public catalogue\nwebsite",
+      "markdown": "C: Public catalogue\nwebsite",
+      "latex": null,
+      "bbox": [
+        0.1388888888888889,
+        0.28805308871799046,
+        0.27825134875727636,
+        0.3157268292976148
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b10",
+      "type": "code",
+      "text": "HTML listing and detail pages displaying the same catalogue fields as B,\nincluding book_id. Listing pages have next links.",
+      "markdown": "```python\nHTML listing and detail pages displaying the same catalogue fields as B,\nincluding book_id. Listing pages have next links.\n```",
+      "latex": null,
+      "bbox": [
+        0.315359477124183,
+        0.28805308871799046,
+        0.8363122379078585,
+        0.3162628905941742
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b11",
+      "type": "text",
+      "text": "D: Feedback text\nfiles",
+      "markdown": "D: Feedback text\nfiles",
+      "latex": null,
+      "bbox": [
+        0.1388888888888889,
+        0.32834351664841777,
+        0.26218421786439183,
+        0.35601721869574654
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b12",
+      "type": "text",
+      "text": "Plain .txt files containing free-form reader comments, without a fixed record\nschema.",
+      "markdown": "Plain .txt files containing free-form reader comments, without a fixed record\nschema.",
+      "latex": null,
+      "bbox": [
+        0.315359477124183,
+        0.32834351664841777,
+        0.8607629514208027,
+        0.35601721869574654
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b13",
+      "type": "text",
+      "text": "Assume A and B are authorized for this project and contain all information needed for the loan\ndashboard. Source C contains no additional catalogue fields. No login automation, real API access, or\nimplementation of a database is required for this question.",
+      "markdown": "Assume A and B are authorized for this project and contain all information needed for the loan\ndashboard. Source C contains no additional catalogue fields. No login automation, real API access, or\nimplementation of a database is required for this question.",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.3736844303632023,
+        0.8529461630029616,
+        0.4164528509583136
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b14",
+      "type": "text",
+      "text": "1. Classify the data (4 marks)",
+      "markdown": "1. Classify the data (4 marks)",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.4302948075111466,
+        0.34062129999297897,
+        0.4428738680752841
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b15",
+      "type": "text",
+      "text": "Classify each source as structured, semi-structured, or unstructured as supplied. Give one reason for\neach classification. Distinguish the structure of an HTML document from the free-form text it may\ncontain.",
+      "markdown": "Classify each source as structured, semi-structured, or unstructured as supplied. Give one reason for\neach classification. Distinguish the structure of an HTML document from the free-form text it may\ncontain.",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.45170265737206045,
+        0.8427882973664726,
+        0.49450841576162013
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b16",
+      "type": "text",
+      "text": "2. Choose acquisition methods (6 marks)",
+      "markdown": "2. Choose acquisition methods (6 marks)",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.5083503723144531,
+        0.41879192676419524,
+        0.5209294328785906
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b17",
+      "type": "text",
+      "text": "Choose a source and an acquisition method for each need: (i) daily loan records, (ii) book titles and\ncategories, and (iii) reader feedback. Justify each choice. In particular, explain your choice between the\ncatalogue API and scraping the catalogue website.",
+      "markdown": "Choose a source and an acquisition method for each need: (i) daily loan records, (ii) book titles and\ncategories, and (iii) reader feedback. Justify each choice. In particular, explain your choice between the\ncatalogue API and scraping the catalogue website.",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.5297955214375197,
+        0.8638856177236519,
+        0.572563942032631
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b18",
+      "type": "text",
+      "text": "3. Design a simple pipeline (6 marks)",
+      "markdown": "3. Design a simple pipeline (6 marks)",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.5864059371177597,
+        0.3942923950993158,
+        0.5989849976818971
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b19",
+      "type": "text",
+      "text": "Draw a diagram or give a numbered flow from acquisition to the dashboard and feedback repository.\nInclude: preservation of raw inputs, validation/cleaning, the key used to combine loan and catalogue\ndata, and the final outputs. Specify two concrete data-quality checks and explain what happens to\nrecords that fail them. Do not invent category values for unmatched books.",
+      "markdown": "Draw a diagram or give a numbered flow from acquisition to the dashboard and feedback repository.\nInclude: preservation of raw inputs, validation/cleaning, the key used to combine loan and catalogue\ndata, and the final outputs. Specify two concrete data-quality checks and explain what happens to\nrecords that fail them. Do not invent category values for unmatched books.",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.6078510862408262,
+        0.8475090475643382,
+        0.66571422538372
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b20",
+      "type": "text",
+      "text": "4. Explain crawling and scraping (4 marks)",
+      "markdown": "4. Explain crawling and scraping (4 marks)",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.6795562590011442,
+        0.43629156374463846,
+        0.6921352810329862
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b21",
+      "type": "text",
+      "text": "If the API were unavailable and you had to use source C, distinguish the crawling step from the\nscraping step in this scenario. Describe two practices that make the collection polite or robust, and\nexplain what each practice achieves.",
+      "markdown": "If the API were unavailable and you had to use source C, distinguish the crawling step from the\nscraping step in this scenario. Describe two practices that make the collection polite or robust, and\nexplain what each practice achieves.",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.7010013310596196,
+        0.8340954749412786,
+        0.7437697901870265
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    },
+    {
+      "id": "p4-b22",
+      "type": "text",
+      "text": "Submission: Written answers of approximately 400-600 words, plus a pipeline diagram or numbered\nflow. No code is required for this question.",
+      "markdown": "Submission: Written answers of approximately 400-600 words, plus a pipeline diagram or numbered\nflow. No code is required for this question.",
+      "latex": null,
+      "bbox": [
+        0.12745098039215685,
+        0.7538238679519808,
+        0.8393696305019404,
+        0.7815349077937579
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "page": 1,
+  "width": 612.0,
+  "height": 792.0,
+  "blocks": [
+    {
+      "id": "p1-b1",
+      "type": "text",
+      "text": "1\nCS5481: Data Engineering\nAssignment 1\nTotal marks: 100\nDue date: As announced on Canvas.\nInstructions\n1. Submit either a single PDF containing your written answers together with a code package, or a single\nJupyter notebook containing your answers and code. Include the datasets and output files required\nbelow.\n2. Use Python for the programming exercises. State the Python version, required packages, and\ncommands needed to reproduce your results.\n3. For coding questions, explain the main steps of your approach and include the requested outputs. For\nQuestion 2, show the regex patterns, the relevant Python calls, and the results for the supplied test\ncases.\nAssignment overview\nQuestion\nTopic\nMarks\nQ1\nWeb data acquisition\n20\nQ2\nData cleaning with regular expressions\n30\nQ3\nData sources and acquisition planning\n20\nQ4\nData visualization\n30\nSubmission checklist\n- Q1: Runnable collection code, a CSV or JSON dataset, a request log, one saved listing page and one\nsaved detail page, and a short explanation.\n- Q2: Ten regex solutions with Python calls and test outputs.\n- Q3: Written answers and a pipeline diagram or numbered flow.\n- Q4: Runnable code, generated student data, and the requested visualizations.\nThe questions are independent. You do not need to use the dataset collected in Q1 to answer the other\nquestions.\n",
+      "markdown": "1\nCS5481: Data Engineering\nAssignment 1\nTotal marks: 100\nDue date: As announced on Canvas.\nInstructions\n1. Submit either a single PDF containing your written answers together with a code package, or a single\nJupyter notebook containing your answers and code. Include the datasets and output files required\nbelow.\n2. Use Python for the programming exercises. State the Python version, required packages, and\ncommands needed to reproduce your results.\n3. For coding questions, explain the main steps of your approach and include the requested outputs. For\nQuestion 2, show the regex patterns, the relevant Python calls, and the results for the supplied test\ncases.\nAssignment overview\nQuestion\nTopic\nMarks\nQ1\nWeb data acquisition\n20\nQ2\nData cleaning with regular expressions\n30\nQ3\nData sources and acquisition planning\n20\nQ4\nData visualization\n30\nSubmission checklist\n- Q1: Runnable collection code, a CSV or JSON dataset, a request log, one saved listing page and one\nsaved detail page, and a short explanation.\n- Q2: Ten regex solutions with Python calls and test outputs.\n- Q3: Written answers and a pipeline diagram or numbered flow.\n- Q4: Runnable code, generated student data, and the requested visualizations.\nThe questions are independent. You do not need to use the dataset collected in Q1 to answer the other\nquestions.\n",
+      "bbox": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "confidence": 1.0,
+      "source": "native_pdf"
+    }
+  ]
+}

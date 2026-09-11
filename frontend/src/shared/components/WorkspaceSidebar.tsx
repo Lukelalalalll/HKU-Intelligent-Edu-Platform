@@ -2,7 +2,7 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import type { Role } from "../../api";
 
-export type SidebarIconName = "overview" | "courses" | "assignments" | "courseware" | "ai" | "admin" | "profile" | "collapse" | "expand";
+export type SidebarIconName = "overview" | "courses" | "assignments" | "courseware" | "lessonPlan" | "ai" | "admin" | "profile" | "collapse" | "expand";
 
 export type SidebarItem = {
   to: string;
@@ -36,6 +36,7 @@ const iconPaths: Record<SidebarIconName, string[]> = {
   courses: ["M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z", "M4 20.5A2.5 2.5 0 0 1 6.5 18H20"],
   assignments: ["m6 4 1.5 1.5L10 3l2.5 2.5L15 3l2.5 2.5L19 4v16H6V4Z", "m9 12 2 2 4-4"],
   courseware: ["M12 3 14.1 9.1 21 12l-6.9 2.9L12 21l-2.1-6.1L3 12l6.9-2.9L12 3Z", "M19 3v4m2-2h-4"],
+  lessonPlan: ["M5 4h14v16H5z", "M8 8h8m-8 4h8m-8 4h5"],
   ai: ["M4 5h16v11H8l-4 4V5Z", "M8 9h8m-8 3h5"],
   admin: ["M12 3 20 6v5c0 5.2-3.4 8.2-8 10-4.6-1.8-8-4.8-8-10V6l8-3Z", "m9 12 2 2 4-4"],
   profile: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "M4 21a8 8 0 0 1 16 0"],
