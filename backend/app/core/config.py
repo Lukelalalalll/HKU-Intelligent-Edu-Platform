@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # DeepSeek currently does not expose an embeddings endpoint. Keep this
     # optional so the provider template does not suggest an OpenAI model.
     embedding_model: str = ""
+    courseware_rag_parser: str = "builtin"
+    courseware_rag_chunk_size: int = 1200
+    courseware_rag_chunk_overlap: int = 160
+    courseware_rag_top_k: int = 5
+    courseware_rag_working_dir: str = "backend/courseware_rag_data"
     search_provider_url: str = ""
     search_provider_key: str = ""
     clip_model_name: str = ""

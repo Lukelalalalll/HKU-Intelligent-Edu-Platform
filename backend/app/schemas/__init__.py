@@ -138,6 +138,8 @@ class CourseMaterialOut(BaseModel):
     size_bytes: int
     uploaded_at: datetime
     download_url: str
+    processing_status: str = "pending"
+    processing_error: str | None = None
 
 
 class CourseChapterOut(BaseModel):
@@ -147,6 +149,31 @@ class CourseChapterOut(BaseModel):
     sort_order: int
     material_count: int
     materials: list[CourseMaterialOut]
+
+class CoursewareQueryIn(BaseModel):
+    question: str = Field(min_length=1, max_length=20000)
+    course_id: str | None = None
+    conversation_id: str | None = None
+
+class CoursewareCitationOut(BaseModel):
+    course_id: str
+    course_code: str
+    course_name: str
+    chapter_id: str
+    chapter_title: str
+    material_id: str
+    material_title: str
+    page_number: int | None = None
+    href: str
+
+class CoursewareQueryOut(BaseModel):
+    course_id: str | None
+    course: dict | None = None
+    answer: str
+    citations: list[CoursewareCitationOut] = Field(default_factory=list)
+    confidence: float = 0.0
+    needs_course_selection: bool = False
+    candidate_courses: list[dict] = Field(default_factory=list)
 
 class ParticipantSummaryOut(BaseModel):
     id: str

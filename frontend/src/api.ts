@@ -31,7 +31,9 @@ export type PasswordChange = { current_password: string; new_password: string };
 export type CourseSemester = "semester_1" | "semester_2" | "summer";
 export type Course = { id: string; code: string; name: string; description: string; teacher_id: string; teacher_name: string; enrolled_count: number; academic_year_start: number; semester: CourseSemester; timezone: string; schedules: { weekday: number; start_time: string; end_time: string; room: string; timezone?: string | null }[] };
 export type MaterialKind = "lecture" | "tutorial";
-export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string };
+export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string; processing_status?: string; processing_error?: string | null };
+export type CoursewareCitation = { course_id: string; course_code: string; course_name: string; chapter_id: string; chapter_title: string; material_id: string; material_title: string; page_number?: number | null; href: string };
+export type CoursewareQuery = { course_id: string | null; course?: { id: string; code: string; name: string } | null; answer: string; citations: CoursewareCitation[]; confidence: number; needs_course_selection: boolean; candidate_courses: { id: string; code: string; name: string }[] };
 export type CourseChapter = { id: string; kind: MaterialKind; title: string; sort_order: number; material_count: number; materials: CourseMaterial[] };
 export type Participant = { id: string; name: string; email: string; username?: string; avatar_url?: string | null; enrolled_at?: string };
 export type DiscussionAuthor = { id: string; username: string; name: string; avatar_url: string | null };
@@ -133,6 +135,7 @@ export const courseMaterialsApi = {
 };
 export const studentApi = {
   dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),
+  coursewareQuery: (payload: { question: string; course_id?: string }) => api.post<CoursewareQuery>("/courseware-agent/query", payload),
 };
 export const pptApi = {
   projects: () => api.get<{ items: PptProject[] }>("/ppt/projects"),

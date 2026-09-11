@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.session import Base, engine
 from app.db.session import SessionLocal
-from app.api.routes import agent, assignments, auth, courses, files, teacher, student, ppt, profile, live_class
+from app.api.routes import agent, assignments, auth, courses, files, teacher, student, ppt, profile, live_class, courseware_agent
 from app.models import *  # noqa: F401,F403
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.include_router(ppt.router)
 app.include_router(profile.router)
 app.include_router(live_class.router)
 app.include_router(live_class.webhook_router)
+app.include_router(courseware_agent.router)
 
 @app.get("/healthz")
 def healthz():

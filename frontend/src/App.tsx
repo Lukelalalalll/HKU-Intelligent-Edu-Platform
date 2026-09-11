@@ -12,6 +12,7 @@ import ProfileRoute from "./features/profile/routes/ProfileRoute";
 import WorkspaceSidebar, { readSidebarCollapsed, SidebarItem, writeSidebarCollapsed } from "./shared/components/WorkspaceSidebar";
 import Breadcrumbs from "./shared/components/Breadcrumbs";
 import WeeklyTimetable from "./shared/components/WeeklyTimetable";
+import CoursewareAgentRoute from "./features/courseware/CoursewareAgentRoute";
 
 const demoAccounts = [
   { label: "学生演示", username: "demo_student" },
@@ -302,6 +303,7 @@ function Shell() {
     { to: "/courses", label: user?.role === "teacher" ? "我的课程" : "课程", roles: ["teacher", "student", "admin"], icon: "courses" },
     { to: "/assignments", label: "作业", roles: ["teacher", "student"], icon: "assignments" },
     { to: "/teacher/courseware-agent", label: "课件 Agent", roles: ["teacher"], icon: "courseware" },
+    { to: "/courseware-agent", label: "AI 讲师", roles: ["student"], icon: "ai" },
     { to: "/admin", label: "管理后台", roles: ["admin"], icon: "admin" },
   ];
 
@@ -419,5 +421,6 @@ function Admin() { return <div><div className="page-heading"><div><p className="
 export default function App() {
   const bootstrap = useAuth((state) => state.bootstrap);
   useEffect(() => { bootstrap(); }, [bootstrap]);
-  return <Routes><Route path="/login" element={<AuthPage mode="login" />} /><Route path="/register" element={<AuthPage mode="register" />} /><Route element={<Protected />}><Route path="/" element={<HomeRoute />} /><Route path="/student" element={<RoleGate roles={["student"]}><StudentDashboard /></RoleGate>} /><Route path="/teacher" element={<RoleGate roles={["teacher"]}><Dashboard /></RoleGate>} /><Route path="/teacher/courseware-agent" element={<RoleGate roles={["teacher"]}><PptCoursewareAgent /></RoleGate>} /><Route path="/teacher/courseware-agent/:projectId" element={<RoleGate roles={["teacher"]}><PptCoursewareAgent /></RoleGate>} /><Route path="/admin" element={<RoleGate roles={["admin"]}><Admin /></RoleGate>} /><Route path="/courses" element={<CoursesRoute />} /><Route path="/courses/:courseId" element={<CourseDetailRoute />} /><Route path="/courses/:courseId/live" element={<LiveClassRoute />} /><Route path="/assignments" element={<Assignments />} /><Route path="/assignments/:assignmentId/grading" element={<GradingPlaceholder />} /><Route path="/profile" element={<ProfileRoute />} /></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>;
+  return <Routes><Route path="/login" element={<AuthPage mode="login" />} /><Route path="/register" element={<AuthPage mode="register" />} /><Route element={<Protected />}><Route path="/" element={<HomeRoute />} /><Route path="/student" element={<RoleGate roles={["student"]}><StudentDashboard /></RoleGate>} /><Route path="/courseware-agent" element={<RoleGate roles={["student"]}><CoursewareAgentRoute /></RoleGate>} /><Route path="/teacher" element={<RoleGate roles={["teacher"]}><Dashboard /></RoleGate>} /><Route path="/teacher/courseware-agent" element={<RoleGate roles={["teacher"]}><PptCoursewareAgent /></RoleGate>} /><Route path="/teacher/courseware-agent/:projectId" element={<RoleGate roles={["teacher"]}><PptCoursewareAgent /></RoleGate>} /><Route path="/admin" element={<RoleGate roles={["admin"]}><Admin /></RoleGate>} /><Route path="/courses" element={<CoursesRoute />} /><Route path="/courses/:courseId" element={<CourseDetailRoute />} /><Route path="/courses/:courseId/live" element={<LiveClassRoute />} /><Route path="/assignments" element={<Assignments />} /><Route path="/assignments/:assignmentId/grading" element={<GradingPlaceholder />} /><Route path="/profile" element={<ProfileRoute />} /></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>;
 }
+

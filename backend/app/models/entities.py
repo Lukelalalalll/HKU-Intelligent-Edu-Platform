@@ -174,6 +174,31 @@ class CourseMaterial(Base):
     chapter: Mapped[CourseChapter] = relationship(back_populates="materials")
     file_asset: Mapped[FileAsset] = relationship()
     uploader: Mapped[User] = relationship()
+    ingestion: Mapped["CourseMaterialIngestion | None"] = relationship(back_populates="material", uselist=False, cascade="all, delete-orphan")
+
+class CourseMaterialIngestion(Base):
+    __tablename__ = "course_material_ingestions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    material_id: Mapped[str] = mapped_column(ForeignKey("course_materials.id", ondelete="CASCADE"), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    parser: Mapped[str] = mapped_column(String(40), default="builtin")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    index_version: Mapped[str] = mapped_column(String(40), default="1")
+    material: Mapped[CourseMaterial] = relationship(back_populates="ingestion")
+
+class CourseMaterialChunk(Base):
+    __tablename__ = "course_material_chunks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    chapter_id: Mapped[str] = mapped_column(ForeignKey("course_chapters.id", ondelete="CASCADE"), index=True)
+    material_id: Mapped[str] = mapped_column(ForeignKey("course_materials.id", ondelete="CASCADE"), index=True)
+    chunk_id: Mapped[str] = mapped_column(String(120), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_anchor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class DiscussionComment(Base):

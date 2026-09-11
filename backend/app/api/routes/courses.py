@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user, require_roles
 from app.db.session import get_db
 from app.core.config import settings
-from app.models import Course, CourseChapter, CourseMaterial, CourseSchedule, DiscussionComment, DiscussionLike, Enrollment, FileAsset, User, UserRole
+from app.models import Course, CourseChapter, CourseMaterial, CourseMaterialIngestion, CourseSchedule, DiscussionComment, DiscussionLike, Enrollment, FileAsset, User, UserRole
 from app.schemas import (
     CourseChapterCreate,
     CourseChapterOut,
@@ -25,6 +25,7 @@ from app.schemas import (
     ScheduleIn,
 )
 from app.storage import LocalStorage
+from app.services.courseware_rag.service import queue_ingestion
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
 
@@ -57,6 +58,7 @@ def _chapter_or_404(course: Course, chapter_id: str) -> CourseChapter:
 
 def _material_out(material: CourseMaterial) -> CourseMaterialOut:
     asset = material.file_asset
+    ingestion = getattr(material, "ingestion", None)
     return CourseMaterialOut(
         id=material.id,
         title=material.title,
@@ -66,6 +68,8 @@ def _material_out(material: CourseMaterial) -> CourseMaterialOut:
         size_bytes=asset.size_bytes,
         uploaded_at=material.created_at,
         download_url=f"/api/courses/{material.chapter.course_id}/materials/{material.id}/download",
+        processing_status=ingestion.status if ingestion else "pending",
+        processing_error=ingestion.error_message if ingestion else None,
     )
 
 
@@ -272,7 +276,28 @@ def upload_material(course_id: str, chapter_id: str, file: UploadFile = File(...
     db.add_all([asset, material])
     db.commit()
     db.refresh(material)
+    db.add(CourseMaterialIngestion(material_id=material.id, status="pending")); db.commit()
+    queue_ingestion(material.id)
     return _material_out(material)
+
+@router.get("/{course_id}/materials/{material_id}/status")
+def material_status(course_id: str, material_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    course = _course_for_user(course_id, user, db)
+    material = next((m for ch in course.chapters for m in ch.materials if m.id == material_id), None)
+    if not material: raise HTTPException(404, "Material not found")
+    ingestion = db.scalar(select(CourseMaterialIngestion).where(CourseMaterialIngestion.material_id == material_id))
+    return {"material_id": material_id, "status": ingestion.status if ingestion else "pending", "error_message": ingestion.error_message if ingestion else None}
+
+@router.post("/{course_id}/materials/{material_id}/reindex")
+def reindex_material(course_id: str, material_id: str, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    course = _course_for_user(course_id, user, db, manage=True)
+    material = next((m for ch in course.chapters for m in ch.materials if m.id == material_id), None)
+    if not material: raise HTTPException(404, "Material not found")
+    ingestion = db.scalar(select(CourseMaterialIngestion).where(CourseMaterialIngestion.material_id == material_id))
+    if not ingestion: db.add(CourseMaterialIngestion(material_id=material_id))
+    else: ingestion.status = "pending"
+    db.commit(); queue_ingestion(material_id)
+    return {"material_id": material_id, "status": "pending"}
 
 
 @router.delete("/{course_id}/materials/{material_id}")
