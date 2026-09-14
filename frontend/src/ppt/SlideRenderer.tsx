@@ -4,7 +4,7 @@ import type { PptDocument, PptPage, PptSlideElement } from "../api";
 export const SLIDE_WIDTH = 1280;
 export const SLIDE_HEIGHT = 720;
 
-const themeBackground = (document?: PptDocument | null) =>
+export const themeBackground = (document?: PptDocument | null) =>
   String(document?.theme?.background || document?.theme?.bg || "linear-gradient(135deg,#fbfefc,#eaf7ef)");
 
 export const defaultDocument = (page: PptPage): PptDocument => {
