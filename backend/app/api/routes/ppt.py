@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_roles
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptGenerationJob, User, UserRole, FileAsset, FileProcessingDocument
+from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptGenerationJob, User, UserRole, FileAsset, FileProcessingDocument, PptEditorAsset
 from app.storage import LocalStorage
 from app.schemas.ppt import ActionIn, BatchIn, ExportIn, MessageIn, OutlineGenerateIn, PagePatchIn, ProjectCreateIn, ProjectPatchIn, ProviderConfigIn, RequirementPatchIn, RequirementChatIn, DocumentPatchIn, StoryboardPatchIn, CheckpointConfirmIn, ThemeSelectIn, LayoutAssignmentsIn, VisualSelectionIn
 from app.services.ppt_agent import PptAgentService
@@ -168,6 +168,67 @@ def page_asset(project_id: str, filename: str, service: PptAgentService = Depend
     if not path.is_file():
         raise HTTPException(404, "素材不存在")
     return FileResponse(path, media_type=None, filename=safe_name)
+
+
+def _editor_asset_out(asset: PptEditorAsset) -> dict:
+    return {"id": asset.id, "url": f"/api/ppt/projects/{asset.project_id}/editor/assets/{asset.id}/file", "name": asset.name, "mime": asset.mime, "width": asset.width, "height": asset.height, "size_bytes": asset.size_bytes, "sha256": asset.sha256, "alt": asset.alt, "source_url": asset.source_url, "license": asset.license}
+
+
+@router.get("/projects/{project_id}/editor/assets")
+def list_editor_assets(project_id: str, service: PptAgentService = Depends(svc)):
+    service.project(project_id)
+    return {"items": [_editor_asset_out(item) for item in service.db.scalars(select(PptEditorAsset).where(PptEditorAsset.project_id == project_id).order_by(PptEditorAsset.created_at.desc())).all()]}
+
+
+@router.post("/projects/{project_id}/editor/assets", status_code=201)
+def upload_editor_asset(project_id: str, file: UploadFile = File(...), page_id: str | None = Query(default=None), service: PptAgentService = Depends(svc)):
+    project = service.project(project_id)
+    if page_id:
+        service.page(project_id, page_id)
+    content = file.file.read()
+    mime = file.content_type or "application/octet-stream"
+    if not mime.startswith("image/"):
+        raise HTTPException(415, "编辑器素材必须是图片")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(413, "图片不能超过 20MB")
+    import hashlib
+    from uuid import uuid4
+    root = settings.ppt_storage_path / project.id / "editor-assets"
+    root.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "image.png").suffix.lower() or ".png"
+    storage = root / f"{uuid4().hex}{suffix}"
+    storage.write_bytes(content)
+    width = height = 0
+    try:
+        from PIL import Image
+        with Image.open(storage) as image:
+            width, height = image.size
+    except Exception:
+        pass
+    asset = PptEditorAsset(project_id=project.id, page_id=page_id, name=file.filename or "image", storage_path=str(storage), mime=mime, width=width, height=height, size_bytes=len(content), sha256=hashlib.sha256(content).hexdigest())
+    service.db.add(asset); service.db.commit(); service.db.refresh(asset)
+    return _editor_asset_out(asset)
+
+
+@router.get("/projects/{project_id}/editor/assets/{asset_id}/file")
+def get_editor_asset(project_id: str, asset_id: str, service: PptAgentService = Depends(svc)):
+    service.project(project_id)
+    asset = service.db.scalar(select(PptEditorAsset).where(PptEditorAsset.project_id == project_id, PptEditorAsset.id == asset_id))
+    if not asset or not Path(asset.storage_path).is_file():
+        raise HTTPException(404, "编辑器素材不存在")
+    return FileResponse(asset.storage_path, media_type=asset.mime, filename=asset.name)
+
+
+@router.delete("/projects/{project_id}/editor/assets/{asset_id}")
+def delete_editor_asset(project_id: str, asset_id: str, service: PptAgentService = Depends(svc)):
+    service.project(project_id)
+    asset = service.db.scalar(select(PptEditorAsset).where(PptEditorAsset.project_id == project_id, PptEditorAsset.id == asset_id))
+    if not asset:
+        raise HTTPException(404, "编辑器素材不存在")
+    path = Path(asset.storage_path)
+    service.db.delete(asset); service.db.commit()
+    if path.is_file(): path.unlink()
+    return {"ok": True}
 
 
 @router.patch("/projects/{project_id}/pages/{page_id}")

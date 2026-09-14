@@ -40,6 +40,10 @@ class _CoreMixin:
     def serialize_page(self, p: PptPage) -> dict[str, Any]:
         statuses = dict(p.statuses_json or {})
         document = p.design_document_json or p.draft_document_json
+        if isinstance(document, dict):
+            # v2 documents remain readable, but all API consumers see the
+            # current protocol marker and canvas contract immediately.
+            document = {**document, "version": 3, "canvas": {"width": 1280, "height": 720}}
         visual_plan = p.visual_plan_json or {}
         return {"id": p.id, "project_id": p.project_id, "section_title": p.section_title, "sort_order": p.sort_order, "title": p.title, "bullets": p.bullets_json or [], "statuses": statuses, "search_queries": p.search_queries_json or [], "summary_md": p.summary_md, "citations": p.citations_json or [], "document": document, "document_revision": p.document_revision, "current_document_version_id": p.current_document_version_id, "speaker_notes": p.speaker_notes, "page_role": p.page_role, "content_plan": p.content_plan_json or {}, "visual_plan": visual_plan, "asset_manifest": visual_plan.get("asset_manifest", []), "image_slots": visual_plan.get("image_slots", []), "selected_asset_ids": visual_plan.get("selected_asset_ids", []), "preview_url": preview_filename(p.project_id, p.id) if document else None, "layout_id": (p.project.layout_assignments or {}).get(p.id), "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
 
@@ -109,7 +113,7 @@ class _CoreMixin:
         # Normalize editor payloads at the API boundary so every element has a
         # stable id and bounded geometry before it becomes a new version.
         normalized = dict(document or {})
-        normalized["version"] = 2
+        normalized["version"] = 3
         normalized["canvas"] = {"width": 1280, "height": 720}
         elements = []
         for index, raw in enumerate(normalized.get("elements") or []):
@@ -121,6 +125,16 @@ class _CoreMixin:
                 except (TypeError, ValueError):
                     item[key] = 0.0
             item.setdefault("type", "body")
+            item["x"] = max(0.0, min(100.0, item["x"]))
+            item["y"] = max(0.0, min(100.0, item["y"]))
+            item["w"] = max(0.1, min(100.0 - item["x"], item["w"]))
+            item["h"] = max(0.1, min(100.0 - item["y"], item["h"]))
+            try:
+                item["rotation"] = float(item.get("rotation", 0) or 0) % 360
+            except (TypeError, ValueError):
+                item["rotation"] = 0
+            item["opacity"] = max(0.0, min(1.0, float(item.get("opacity", 1) or 1)))
+            item["visible"] = item.get("visible", True) is not False
             item.setdefault("zIndex", index + 1)
             if item.get("type") == "image": item.setdefault("object_fit", "cover")
             elements.append(item)

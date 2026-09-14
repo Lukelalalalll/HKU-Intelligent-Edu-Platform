@@ -25,7 +25,7 @@ from app.models import (
     PptAgentEvent, PptAgentRun, PptExportJob, PptOutlineVersion, PptPage,
     PptProject, PptRequirement, PptSourceChunk,
     PptSourceCollection, PptSourceDocument, User, PptMessage, PptCheckpoint, PptDocumentVersion, PptGenerationJob,
-    FileContextBinding, FileProcessingChunk, FileProcessingDocument,
+    FileContextBinding, FileProcessingChunk, FileProcessingDocument, PptEditorAsset,
 )
 from app.db.session import SessionLocal
 from app.services.ppt_theme import preview_filename, get_theme, list_layouts, validate_theme_pack

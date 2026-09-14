@@ -106,9 +106,25 @@ export type PptSlideElement = {
   radius?: number;
   object_fit?: "cover" | "contain";
   locked?: boolean;
+  visible?: boolean;
+  name?: string;
+  rotation?: number;
+  group_id?: string;
+  text_runs?: PptTextRun[];
+  paragraph_style?: PptParagraphStyle;
+  natural_width?: number;
+  natural_height?: number;
+  asset_id?: string;
+  crop?: { left: number; top: number; right: number; bottom: number };
+  flip_x?: boolean;
+  flip_y?: boolean;
+  lock_aspect_ratio?: boolean;
+  shadow?: string;
 };
+export type PptTextRun = { start: number; end: number; font_family?: string; font_size?: number; font_weight?: number | string; italic?: boolean; underline?: boolean; strike?: boolean; color?: string; highlight?: string };
+export type PptParagraphStyle = { align?: "left" | "center" | "right" | "justify"; line_height?: number; letter_spacing?: number; bullet?: boolean; numbering?: boolean; indent?: number; vertical_align?: "top" | "center" | "bottom" };
 export type PptCanvasSpec = { width: 1280; height: 720 };
-export type PptDocument = { version?: 2; canvas?: PptCanvasSpec; layout?: string; theme?: Record<string, any>; elements: PptSlideElement[]; speaker_notes?: string };
+export type PptDocument = { version?: 2 | 3; canvas?: PptCanvasSpec; layout?: string; theme?: Record<string, any>; elements: PptSlideElement[]; speaker_notes?: string; guides?: { orientation: "horizontal" | "vertical"; position: number }[] };
 export type PptPagePatch = { title: string; bullets: string[]; section_title?: string; speaker_notes?: string };
 export type PptVisualAsset = { id: string; title?: string; src?: string; public_url?: string; asset_path?: string; source_url?: string; alt?: string; score?: number; license?: string; status?: string; error?: string };
 export type PptImageSlot = { slot_id: string; asset_id: string; src?: string; asset_path?: string; placement_hint?: string; x: number; y: number; w: number; h: number; confidence?: number; object_fit?: "cover" | "contain" };
@@ -210,6 +226,9 @@ export const pptApi = {
   saveVisualSelection: (id: string, pageId: string, asset_ids: string[]) => api.put<PptPage>(`/ppt/projects/${id}/pages/${pageId}/visual-selection`, { asset_ids }),
   batch: (id: string, action_type: string) => api.post(`/ppt/projects/${id}/actions/batch`, { action_type }),
   upload: (id: string, file: File, pageId?: string) => { const form = new FormData(); form.append("file", file); return api.post(`/ppt/projects/${id}/files`, form, { params: pageId ? { page_id: pageId } : undefined }); },
+  editorAsset: (id: string, file: File, pageId?: string) => { const form = new FormData(); form.append("file", file); return api.post<PptEditorAsset>(`/ppt/projects/${id}/editor/assets`, form, { params: pageId ? { page_id: pageId } : undefined }); },
+  editorAssets: (id: string) => api.get<{ items: PptEditorAsset[] }>(`/ppt/projects/${id}/editor/assets`),
+  deleteEditorAsset: (id: string, assetId: string) => api.delete(`/ppt/projects/${id}/editor/assets/${assetId}`),
   export: (id: string) => api.post<{ id: string; status: string }>(`/ppt/projects/${id}/exports`, {}),
   exportStatus: (id: string, exportId: string) => api.get<{ id: string; status: string; error?: string }>(`/ppt/projects/${id}/exports/${exportId}`),
   streamUrl: (id: string) => `/api/ppt/projects/${id}/events/stream`,
@@ -238,6 +257,7 @@ export const pptApi = {
   patchStoryboard: (id: string, pageIds: string[]) => api.patch<{ items: PptPage[] }>(`/ppt/projects/${id}/storyboard`, { page_ids: pageIds }),
   downloadExport: (id: string, exportId: string) => api.get<Blob>(`/ppt/projects/${id}/exports/${exportId}/download`, { responseType: "blob" }),
 };
+export type PptEditorAsset = { id: string; url: string; name: string; mime: string; width: number; height: number; size_bytes: number; sha256: string; alt?: string; source_url?: string; license?: string };
 export const adminAiApi = {
   providers: () => api.get<{ items: AiProvider[] }>("/admin/ai/providers"),
   createProvider: (payload: Record<string, unknown>) => api.post<AiProvider>("/admin/ai/providers", payload),

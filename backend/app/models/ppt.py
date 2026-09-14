@@ -132,6 +132,24 @@ class PptDocumentVersion(Base):
     project: Mapped[PptProject] = relationship(back_populates="document_versions")
 
 
+class PptEditorAsset(Base):
+    __tablename__ = "ppt_editor_assets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
+    page_id: Mapped[str | None] = mapped_column(ForeignKey("ppt_pages.id", ondelete="SET NULL"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(500), default="image")
+    storage_path: Mapped[str] = mapped_column(Text, default="")
+    mime: Mapped[str] = mapped_column(String(120), default="image/png")
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    alt: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    license: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class PptSourceCollection(Base):
     __tablename__ = "ppt_source_collections"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))

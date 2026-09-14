@@ -164,15 +164,46 @@ def _add_text(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBCo
     element_type = str(element.get("type") or "body")
     font_size = max(6, _number(element.get("font_size"), 30 if element_type == "title" else 18))
     color = RGBColor(*_rgb(element.get("color") or colors.get("title" if element_type == "title" else "body")))
+    runs = [item for item in (element.get("text_runs") or []) if isinstance(item, dict)]
+    cursor = 0
     for index, line in enumerate(text.splitlines() or [""]):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
-        paragraph.text = line
         paragraph.alignment = _alignment(element.get("align"), PP_ALIGN)
-        for run in paragraph.runs:
+        paragraph.space_after = Pt(_number((element.get("paragraph_style") or {}).get("space_after"), 0))
+        paragraph.line_spacing = _number((element.get("paragraph_style") or {}).get("line_height"), 1.3)
+        if (element.get("paragraph_style") or {}).get("bullet"):
+            paragraph.text = ""
+            paragraph.level = int(_number((element.get("paragraph_style") or {}).get("indent"), 0))
+            paragraph.text = "• "
+        line_start = cursor
+        line_end = cursor + len(line)
+        applicable = [item for item in runs if int(_number(item.get("end"), 0)) > line_start and int(_number(item.get("start"), 0)) < line_end]
+        if not applicable:
+            run = paragraph.add_run()
+            run.text = line
             run.font.name = str(element.get("font_family") or "Arial")
             run.font.size = Pt(font_size)
             run.font.bold = _font_is_bold(element.get("font_weight"), element_type)
             run.font.color.rgb = color
+        else:
+            position = line_start
+            for item in applicable:
+                start = max(line_start, int(_number(item.get("start"), line_start)))
+                end = min(line_end, int(_number(item.get("end"), line_end)))
+                if start > position:
+                    plain = paragraph.add_run(); plain.text = text[position - line_start:start - line_start]; plain.font.name = str(element.get("font_family") or "Arial"); plain.font.size = Pt(font_size); plain.font.color.rgb = color
+                styled = paragraph.add_run(); styled.text = text[start - line_start:end - line_start]
+                styled.font.name = str(item.get("font_family") or element.get("font_family") or "Arial")
+                styled.font.size = Pt(max(6, _number(item.get("font_size"), font_size)))
+                styled.font.bold = _font_is_bold(item.get("font_weight"), element_type)
+                styled.font.italic = bool(item.get("italic"))
+                styled.font.underline = bool(item.get("underline"))
+                styled.font.strike = bool(item.get("strike"))
+                styled.font.color.rgb = RGBColor(*_rgb(item.get("color"), _rgb(element.get("color") or colors.get("body"))))
+                position = end
+            if position < line_end:
+                plain = paragraph.add_run(); plain.text = text[position - line_start:]; plain.font.name = str(element.get("font_family") or "Arial"); plain.font.size = Pt(font_size); plain.font.color.rgb = color
+        cursor = line_end + 1
 
 
 def _add_shape(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBColor, MSO_SHAPE, Pt) -> None:
@@ -219,7 +250,21 @@ def _add_image(slide, element: dict[str, Any], prs) -> None:
         return
     left, top, width, height = _geometry(element, prs)
     try:
-        slide.shapes.add_picture(source, left, top, width=width, height=height)
+        picture = slide.shapes.add_picture(source, left, top, width=width, height=height)
+        picture.rotation = _number(element.get("rotation"), 0)
+        # python-pptx exposes these properties on Picture in recent versions;
+        # keep compatibility with older releases used by existing deployments.
+        if element.get("flip_x") is not None:
+            try: picture.flip_horizontal = bool(element.get("flip_x"))
+            except (AttributeError, ValueError): pass
+        if element.get("flip_y") is not None:
+            try: picture.flip_vertical = bool(element.get("flip_y"))
+            except (AttributeError, ValueError): pass
+        crop = element.get("crop") or {}
+        for key, attr in (("left", "crop_left"), ("top", "crop_top"), ("right", "crop_right"), ("bottom", "crop_bottom")):
+            if crop.get(key) is not None:
+                try: setattr(picture, attr, max(0.0, min(1.0, _number(crop.get(key)))))
+                except (AttributeError, ValueError): pass
     except Exception:
         # A malformed or unsupported uploaded image must not prevent the rest
         # of a teacher's deck from exporting.

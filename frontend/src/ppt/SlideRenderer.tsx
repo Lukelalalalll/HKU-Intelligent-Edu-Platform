@@ -11,7 +11,7 @@ export const defaultDocument = (page: PptPage): PptDocument => {
   const theme = page.document?.theme || {};
   const bodyColor = String(theme.body || "#21463a");
   return {
-    version: 2,
+    version: 3,
     canvas: { width: SLIDE_WIDTH, height: SLIDE_HEIGHT },
     layout: page.document?.layout || "title-content",
     theme: { ...theme, background: themeBackground(page.document) },

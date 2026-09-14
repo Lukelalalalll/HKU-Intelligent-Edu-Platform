@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { PptChatStreamEvent, PptDocument, PptMessage, PptPage, PptPagePatch, PptProject, PptSlideElement, PptRequirement, PptSource, PptTheme, pptApi } from "../api";
 import { SLIDE_HEIGHT, SLIDE_WIDTH, SlideRenderer, SlideThumbnail, editableDocument } from "./SlideRenderer";
+import SceneGraphEditor from "./SceneGraphEditor";
 import { HKUConfirmDialog, HKUDialog } from "../shared/components/HKUDialog";
 import WelcomeBanner from "../shared/components/WelcomeBanner";
 
@@ -27,22 +28,12 @@ function StudioHomeHeader() {
 }
 
 function SlideCanvas({ page, editable, onChange }: { page: PptPage; editable: boolean; onChange?: (doc: PptDocument) => void }) {
-  const [doc, setDoc] = useState<PptDocument>(() => editableDocument(page)); const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [history, setHistory] = useState<PptDocument[]>([]); const [future, setFuture] = useState<PptDocument[]>([]);
-  const [scale, setScale] = useState(1); const viewportRef = useRef<HTMLDivElement | null>(null); const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ id: string; x: number; y: number; w: number; h: number; startX: number; startY: number; resize?: boolean } | null>(null);
-  useEffect(() => setDoc(editableDocument(page)), [page.id, page.document, page.title, page.bullets]);
-  useEffect(() => { const node = viewportRef.current; if (!node) return; const observer = new ResizeObserver(() => { const width = Math.max(320, node.clientWidth - 32); const height = Math.max(180, node.clientHeight - 72); setScale(Math.min(width / SLIDE_WIDTH, height / SLIDE_HEIGHT, 1)); }); observer.observe(node); return () => observer.disconnect(); }, []);
-  const commit = (next: PptDocument, record = true) => { if (record) { setHistory((items) => [...items.slice(-19), doc]); setFuture([]); } setDoc(next); onChange?.(next); };
-  const updateElement = (id: string, patch: Partial<PptSlideElement>) => commit({ ...doc, elements: doc.elements.map((el) => el.id === id ? { ...el, ...patch } : el) });
-  const undo = () => { const previous = history[history.length - 1]; if (!previous) return; setHistory((items) => items.slice(0, -1)); setFuture((items) => [doc, ...items]); commit(previous, false); };
-  const redo = () => { const next = future[0]; if (!next) return; setFuture((items) => items.slice(1)); setHistory((items) => [...items, doc]); commit(next, false); };
-  const startDrag = (event: React.PointerEvent<HTMLDivElement>, element: PptSlideElement) => { dragRef.current = { id: element.id, x: element.x, y: element.y, w: element.w, h: element.h, startX: event.clientX, startY: event.clientY }; event.currentTarget.setPointerCapture?.(event.pointerId); };
-  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => { const drag = dragRef.current; const surface = surfaceRef.current; if (!drag || !surface) return; const rect = surface.getBoundingClientRect(); const dx = ((event.clientX - drag.startX) / rect.width) * 100; const dy = ((event.clientY - drag.startY) / rect.height) * 100; updateElement(drag.id, drag.resize ? { w: Math.max(4, Math.min(100 - drag.x, drag.w + dx)), h: Math.max(4, Math.min(100 - drag.y, drag.h + dy)) } : { x: Math.max(0, Math.min(100 - drag.w, drag.x + dx)), y: Math.max(0, Math.min(100 - drag.h, drag.y + dy)) }); };
-  return <div className="ppt-canvas-frame" ref={viewportRef} onKeyDown={(e) => { if (!editable) return; if (e.key === "Escape") setSelectedId(null); if (e.key === "Delete" && selectedId) { e.preventDefault(); commit({ ...doc, elements: doc.elements.filter((el) => el.id !== selectedId) }); setSelectedId(null); } if (!(e.ctrlKey || e.metaKey)) return; if (e.key.toLowerCase() === "z") { e.preventDefault(); undo(); } if (e.key.toLowerCase() === "y") { e.preventDefault(); redo(); } }} tabIndex={0} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
-    <div className="ppt-canvas-viewport" style={{ width: SLIDE_WIDTH * scale, height: SLIDE_HEIGHT * scale }} onPointerDown={(event) => { if (editable && !(event.target as HTMLElement).closest(".ppt-slide-element")) setSelectedId(null); }}><div className="ppt-canvas-scale" ref={surfaceRef} style={{ width: SLIDE_WIDTH, height: SLIDE_HEIGHT, transform: `scale(${scale})` }}><SlideRenderer document={doc} editable={editable} selectedId={selectedId} onBackgroundPointerDown={() => setSelectedId(null)} onSelect={(element) => setSelectedId(element.id)} onPointerDown={startDrag} onTextBlur={(element, text) => updateElement(element.id, { text })} onResizeStart={(event, element) => { event.stopPropagation(); dragRef.current = { id: element.id, x: element.x, y: element.y, w: element.w, h: element.h, startX: event.clientX, startY: event.clientY, resize: true }; event.currentTarget.setPointerCapture?.(event.pointerId); }} /></div></div>
-    <div className="ppt-canvas-controls">{editable && <><button onClick={undo} disabled={!history.length}>撤销</button><button onClick={redo} disabled={!future.length}>重做</button>{selectedId && <button onClick={() => { commit({ ...doc, elements: doc.elements.filter((el) => el.id !== selectedId) }); setSelectedId(null); }}>删除元素</button>}</>}</div>
-  </div>;
+  const document = editableDocument(page);
+  return <SceneGraphEditor document={document} editable={editable} onChange={onChange} onUploadImage={async (file) => {
+    const projectId = page.project_id;
+    const { data } = await pptApi.editorAsset(projectId, file, page.id);
+    return data;
+  }} />;
 }
 
 function Chat({ project, page, messages, requirement, sources, onSent, onUpload, onBeforeAgent, onAgentSlideFocus, onRequirementUpdate }: { project: PptProject; page?: PptPage; messages: PptMessage[]; requirement?: PptRequirement | null; sources?: PptSource[]; onSent: () => void | Promise<void>; onUpload?: (files: FileList) => void; onBeforeAgent?: () => Promise<void>; onAgentSlideFocus?: (index: number) => void; onRequirementUpdate?: (response: any) => void }) {
@@ -132,10 +123,9 @@ function LayoutingStep({ progress, error, onRetry, onChooseTheme }: { progress: 
 }
 
 function PreviewEditor({ pages, selected, onSelect, onSave, onReorder, saving }: { pages: PptPage[]; selected: number; onSelect: (index: number) => void; onSave: (page: PptPage, doc: PptDocument) => void; onReorder: (ids: string[]) => void; saving: boolean }) {
-  const page = pages[selected]; const fileRef = useRef<HTMLInputElement | null>(null);
+  const page = pages[selected];
   const [dragId, setDragId] = useState<string | null>(null);
-  const addImage = async (file: File) => { if (!page) return; const reader = new FileReader(); reader.onload = () => { const doc = editableDocument(page); const next: PptDocument = { ...doc, elements: [...doc.elements, { id: `image-${Date.now()}`, type: "image", x: 58, y: 28, w: 34, h: 42, src: String(reader.result || "") }] }; onSave(page, next); }; reader.readAsDataURL(file); };
-  return <div className="ppt-rich-editor"><aside className="ppt-rich-thumbnails"><div className="ppt-thumb-head"><strong>页面</strong><span>{pages.length} 张</span></div><div className="ppt-thumb-list">{pages.map((item, i) => <div key={item.id} draggable onDragStart={() => setDragId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!dragId || dragId === item.id) return; const ids = pages.map((entry) => entry.id); const from = ids.indexOf(dragId); const to = ids.indexOf(item.id); ids.splice(from, 1); ids.splice(to, 0, dragId); onReorder(ids); setDragId(null); }}><SlideThumbnail page={{ ...item, sort_order: i }} selected={i === selected} onClick={() => onSelect(i)} /></div>)}</div></aside><main className="ppt-rich-main"><div className="ppt-rich-toolbar"><div><span className="ppt-kicker">PREVIEW & EDIT</span><strong>{page?.title}</strong></div><div><button className="ppt-ghost" onClick={() => fileRef.current?.click()}>＋ 添加图片</button><button className="ppt-primary" disabled={saving}>{saving ? "保存中…" : "已自动保存"}</button><input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void addImage(file); e.currentTarget.value = ""; }} /></div></div><div className="ppt-rich-canvas"><SlideCanvas page={page} editable onChange={(doc) => page && onSave(page, doc)} /></div><div className="ppt-rich-help">点击文字直接编辑 · 拖动元素调整位置 · 选中元素后可删除 · 支持上传图片并拖拽排版</div></main></div>;
+  return <div className="ppt-rich-editor"><aside className="ppt-rich-thumbnails"><div className="ppt-thumb-head"><strong>页面</strong><span>{pages.length} 张</span></div><div className="ppt-thumb-list">{pages.map((item, i) => <div key={item.id} draggable onDragStart={() => setDragId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!dragId || dragId === item.id) return; const ids = pages.map((entry) => entry.id); const from = ids.indexOf(dragId); const to = ids.indexOf(item.id); ids.splice(from, 1); ids.splice(to, 0, dragId); onReorder(ids); setDragId(null); }}><SlideThumbnail page={{ ...item, sort_order: i }} selected={i === selected} onClick={() => onSelect(i)} /></div>)}</div></aside><main className="ppt-rich-main"><div className="ppt-rich-toolbar"><div><span className="ppt-kicker">PREVIEW & EDIT</span><strong>{page?.title}</strong></div><div><button className="ppt-primary" disabled={saving}>{saving ? "保存中…" : "已自动保存"}</button></div></div><div className="ppt-rich-canvas"><SlideCanvas page={page} editable onChange={(doc) => page && onSave(page, doc)} /></div></main></div>;
 }
 
 export default function CoursewareAgent() {
