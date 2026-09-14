@@ -52,18 +52,54 @@ class Settings(BaseSettings):
     zoom_webhook_secret_token: str = ""
     zoom_webhook_verification_token: str = ""
     zoom_api_base_url: str = "https://api.zoom.us/v2"
+    file_processing_dir: str = "backend/processed"
+    file_processing_require_mineru: bool = True
+    file_processing_mineru_command: str = "mineru"
+    file_processing_max_bytes: int = 50 * 1024 * 1024
+    file_processing_workers: int = 2
+    file_processing_poll_seconds: float = 0.75
+    file_processing_parser_version: str = "1"
+    # Background task infrastructure.  The API keeps the database job row as
+    # the source of truth; Celery/Redis is only the delivery mechanism.
+    task_broker_url: str = "redis://localhost:6379/0"
+    task_result_backend: str = "redis://localhost:6379/1"
+    task_queue_enabled: bool = True
+    task_queue_eager: bool = False
+    task_max_retries: int = 3
+    task_retry_backoff_seconds: int = 5
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), extra="ignore")
 
+    @staticmethod
+    def _data_path(value: str) -> Path:
+        """Resolve relative runtime paths from the repository root.
+
+        The old implementation resolved ``backend/uploads`` relative to the
+        process working directory.  Starting uvicorn from ``backend/`` then
+        accidentally created ``backend/backend/uploads``.  Anchoring relative
+        paths here makes CLI, tests and workers agree on one location.
+        """
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        root = Path(__file__).resolve().parents[3]
+        return root / path
+
     @property
     def upload_path(self) -> Path:
-        path = Path(self.upload_dir)
+        path = self._data_path(self.upload_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
     def ppt_storage_path(self) -> Path:
-        path = Path(self.ppt_storage_dir)
+        path = self._data_path(self.ppt_storage_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def file_processing_path(self) -> Path:
+        path = self._data_path(self.file_processing_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 

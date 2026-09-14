@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+uploads/
+processed/
+ppt_storage/
+courseware_rag_data/
+.env
+*.pyc

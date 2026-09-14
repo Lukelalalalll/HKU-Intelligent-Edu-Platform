@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import current_user
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Assignment, AssignmentAttachment, Course, Enrollment, FileAsset, Submission, User, UserRole
+from app.models import Assignment, AssignmentAttachment, Course, Enrollment, FileAsset, Submission, User, UserRole, FileProcessingDocument, SubmissionAttachment
+from app.services.file_processing import bind_document, upload_asset
 from app.schemas import AssignmentCreate, AssignmentOut, SubmissionCreate, SubmissionOut
 
 router = APIRouter(prefix="/api/courses/{course_id}/assignments", tags=["assignments"])
@@ -26,6 +27,10 @@ def list_assignments(course_id: str, user: User = Depends(current_user), db: Ses
 def _out(a: Assignment):
     return {"id": a.id, "course_id": a.course_id, "title": a.title, "description": a.description, "due_at": a.due_at, "max_score": a.max_score, "status": a.status, "attachments": [{"id": x.id, "file_asset_id": x.file_asset_id, "file_name": x.file_asset.original_name, "mime_type": x.file_asset.mime_type, "size_bytes": x.file_asset.size_bytes, "download_url": f"/api/courses/{a.course_id}/assignments/{a.id}/attachments/{x.id}/download"} for x in a.attachments]}
 
+
+def _submission_out(item: Submission, db: Session) -> dict:
+    return {"id": item.id, "assignment_id": item.assignment_id, "student_id": item.student_id, "content": item.content, "file_asset_id": item.file_asset_id, "submitted_at": item.submitted_at, "score": item.score, "feedback": item.feedback, "attachments": [{"id": x.id, "file_asset_id": x.file_asset_id, "file_name": db.get(FileAsset, x.file_asset_id).original_name if db.get(FileAsset, x.file_asset_id) else "", "document_id": x.document_id} for x in db.scalars(select(SubmissionAttachment).where(SubmissionAttachment.submission_id == item.id).order_by(SubmissionAttachment.sort_order)).all()]}
+
 @router.post("", response_model=AssignmentOut, status_code=201)
 def create_assignment(course_id: str, payload: AssignmentCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     course = db.get(Course, course_id)
@@ -42,6 +47,10 @@ def create_assignment(course_id: str, payload: AssignmentCreate, user: User = De
         db.add(AssignmentAttachment(assignment=assignment, file_asset=asset, sort_order=index))
     db.commit()
     db.refresh(assignment)
+    for asset_id in ids:
+        asset = db.get(FileAsset, asset_id)
+        document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == asset_id) | (FileProcessingDocument.sha256 == asset.sha256))) if asset else None
+        if document: bind_document(db, document.id, target_type="assignment", target_id=assignment.id, owner_id=user.id, course_id=course_id, visibility="course")
     return _out(assignment)
 
 @router.post("/{assignment_id}/attachments", status_code=201)
@@ -51,6 +60,8 @@ def add_attachment(course_id: str, assignment_id: str, file_asset_id: str, user:
     asset = db.get(FileAsset, file_asset_id)
     if not asset or asset.uploader_id != user.id: raise HTTPException(404, "File asset not found")
     item = AssignmentAttachment(assignment_id=assignment.id, file_asset_id=asset.id, sort_order=len(assignment.attachments)); db.add(item); db.commit(); db.refresh(item)
+    document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == asset.id) | (FileProcessingDocument.sha256 == asset.sha256)))
+    if document: bind_document(db, document.id, target_type="assignment", target_id=assignment.id, owner_id=user.id, course_id=course_id, visibility="course")
     return {"id": item.id, "file_asset_id": asset.id, "file_name": asset.original_name, "mime_type": asset.mime_type, "size_bytes": asset.size_bytes, "download_url": f"/api/courses/{course_id}/assignments/{assignment_id}/attachments/{item.id}/download"}
 
 @router.delete("/{assignment_id}/attachments/{attachment_id}", status_code=204)
@@ -85,12 +96,54 @@ def submit_assignment(course_id: str, assignment_id: str, payload: SubmissionCre
         existing.file_asset_id = payload.file_asset_id
         db.commit()
         db.refresh(existing)
-        return existing
-    submission = Submission(assignment_id=assignment_id, student_id=user.id, **payload.model_dump())
+        if existing.file_asset_id:
+            source_asset = db.get(FileAsset, existing.file_asset_id)
+            document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == existing.file_asset_id) | (FileProcessingDocument.sha256 == source_asset.sha256))) if source_asset else None
+            if document: bind_document(db, document.id, target_type="submission", target_id=existing.id, owner_id=user.id, course_id=course_id, visibility="owner")
+        for index, asset_id in enumerate(payload.file_asset_ids):
+            asset = db.get(FileAsset, asset_id)
+            if not asset or asset.uploader_id != user.id: raise HTTPException(404, "File asset not found")
+            if not db.scalar(select(SubmissionAttachment).where(SubmissionAttachment.submission_id == existing.id, SubmissionAttachment.file_asset_id == asset.id)):
+                document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == asset.id) | (FileProcessingDocument.sha256 == asset.sha256)))
+                db.add(SubmissionAttachment(submission_id=existing.id, file_asset_id=asset.id, document_id=document.id if document else None, sort_order=index))
+                if document: bind_document(db, document.id, target_type="submission", target_id=existing.id, owner_id=user.id, course_id=course_id, visibility="owner")
+        db.commit()
+        return _submission_out(existing, db)
+    submission = Submission(assignment_id=assignment_id, student_id=user.id, **payload.model_dump(exclude={"file_asset_ids"}))
     db.add(submission)
     db.commit()
     db.refresh(submission)
-    return submission
+    if submission.file_asset_id:
+        source_asset = db.get(FileAsset, submission.file_asset_id)
+        document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == submission.file_asset_id) | (FileProcessingDocument.sha256 == source_asset.sha256))) if source_asset else None
+        if document: bind_document(db, document.id, target_type="submission", target_id=submission.id, owner_id=user.id, course_id=course_id, visibility="owner")
+    for index, asset_id in enumerate(payload.file_asset_ids):
+        asset = db.get(FileAsset, asset_id)
+        if not asset or asset.uploader_id != user.id: raise HTTPException(404, "File asset not found")
+        document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == asset.id) | (FileProcessingDocument.sha256 == asset.sha256)))
+        db.add(SubmissionAttachment(submission_id=submission.id, file_asset_id=asset.id, document_id=document.id if document else None, sort_order=index))
+        if document: bind_document(db, document.id, target_type="submission", target_id=submission.id, owner_id=user.id, course_id=course_id, visibility="owner")
+    db.commit()
+    return _submission_out(submission, db)
+
+
+@router.post("/{assignment_id}/submissions/{submission_id}/attachments", status_code=201)
+def add_submission_attachments(course_id: str, assignment_id: str, submission_id: str, files: list[UploadFile] = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if user.role != UserRole.student: raise HTTPException(403, "Only students can submit assignments")
+    assignment = db.scalar(select(Assignment).where(Assignment.id == assignment_id, Assignment.course_id == course_id))
+    submission = db.scalar(select(Submission).where(Submission.id == submission_id, Submission.assignment_id == assignment_id, Submission.student_id == user.id))
+    if not assignment or not submission: raise HTTPException(404, "Submission not found")
+    existing_count = len(db.scalars(select(SubmissionAttachment).where(SubmissionAttachment.submission_id == submission.id)).all())
+    result = []
+    for index, file in enumerate(files):
+        try:
+            asset, document, _job = upload_asset(db, uploader_id=user.id, filename=file.filename or "submission", mime_type=file.content_type, content=file.file.read(), target_type="submission", target_id=submission.id, owner_id=user.id, course_id=course_id, visibility="owner")
+        except ValueError as exc: raise HTTPException(400, str(exc)) from exc
+        item = SubmissionAttachment(submission_id=submission.id, file_asset_id=asset.id, document_id=document.id, sort_order=existing_count + index)
+        db.add(item); db.flush(); result.append({"id": item.id, "file_asset_id": asset.id, "file_name": asset.original_name, "document_id": document.id, "job_id": _job.id if _job else None, "processing_status": document.status})
+    submission.submitted_at = submission.submitted_at
+    db.commit()
+    return {"items": result, "submission_id": submission.id}
 
 @router.get("/{assignment_id}/submissions", response_model=list[SubmissionOut])
 def list_submissions(course_id: str, assignment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
@@ -99,4 +152,4 @@ def list_submissions(course_id: str, assignment_id: str, user: User = Depends(cu
         raise HTTPException(404, "Assignment not found")
     if user.role != UserRole.admin and assignment.teacher_id != user.id:
         raise HTTPException(403, "Only the course teacher can view submissions")
-    return db.scalars(select(Submission).where(Submission.assignment_id == assignment_id).order_by(Submission.submitted_at.desc())).all()
+    return [_submission_out(item, db) for item in db.scalars(select(Submission).where(Submission.assignment_id == assignment_id).order_by(Submission.submitted_at.desc())).all()]

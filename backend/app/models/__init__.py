@@ -27,6 +27,8 @@ from app.models.ppt import (
 )
 from app.models.lesson_plan import LessonPlanProject, LessonPlanPage, LessonPlanAsset, LessonPlanEvent, LessonPlanExportJob
 from app.models.ai import AiProvider, AiBusinessBinding
+from app.models.file_processing import FileProcessingDocument, FileProcessingJob, FileProcessingPage, FileProcessingChunk, FileContextBinding, AgentMessageAttachment, SubmissionAttachment
+from app.models.jobs import TaskOutbox
 
 __all__ = [
     "User", "UserRole", "Course", "Enrollment", "CourseSchedule", "Assignment", "AssignmentAttachment", "Submission",
@@ -37,5 +39,7 @@ __all__ = [
     "PptMessage", "PptCheckpoint", "PptDocumentVersion", "PptGenerationJob",
     "LessonPlanProject", "LessonPlanPage", "LessonPlanAsset", "LessonPlanEvent", "LessonPlanExportJob",
     "AiProvider", "AiBusinessBinding",
+    "FileProcessingDocument", "FileProcessingJob", "FileProcessingPage", "FileProcessingChunk", "FileContextBinding", "AgentMessageAttachment", "SubmissionAttachment",
+    "TaskOutbox",
 ]
 

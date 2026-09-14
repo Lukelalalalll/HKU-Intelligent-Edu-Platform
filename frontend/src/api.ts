@@ -31,7 +31,7 @@ export type PasswordChange = { current_password: string; new_password: string };
 export type CourseSemester = "semester_1" | "semester_2" | "summer";
 export type Course = { id: string; code: string; name: string; description: string; teacher_id: string; teacher_name: string; enrolled_count: number; academic_year_start: number; semester: CourseSemester; timezone: string; schedules: { weekday: number; start_time: string; end_time: string; room: string; timezone?: string | null }[] };
 export type MaterialKind = "lecture" | "tutorial";
-export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string; processing_status?: string; processing_error?: string | null };
+export type CourseMaterial = { id: string; title: string; file_name: string; mime_type: string; extension: string; size_bytes: number; uploaded_at: string; download_url: string; processing_status?: string; processing_error?: string | null; document_id?: string | null; job_id?: string | null; processing_parser?: string | null; processing_fallback_reason?: string | null };
 export type CoursewareCitation = { course_id: string; course_code: string; course_name: string; chapter_id: string; chapter_title: string; material_id: string; material_title: string; page_number?: number | null; href: string };
 export type CoursewareQuery = { course_id: string | null; course?: { id: string; code: string; name: string } | null; answer: string; citations: CoursewareCitation[]; confidence: number; needs_course_selection: boolean; candidate_courses: { id: string; code: string; name: string }[]; model?: string | null };
 export type CourseChapter = { id: string; kind: MaterialKind; title: string; sort_order: number; material_count: number; materials: CourseMaterial[] };
@@ -43,8 +43,12 @@ export type LiveClassSchedule = { meeting_id: string; schedule_id: string; weekd
 export type LiveClass = { course_id: string; course_name: string; teacher_name: string; timezone: string; schedules: LiveClassSchedule[]; provisioning_required: boolean; status: string };
 export type LiveClassAuthorization = { meeting_number: string; sdk_jwt: string; sdk_key: string; zak: string | null; user_name: string; role: number; expires_at: string; join_url: string };
 export type FileAsset = { id: string; name: string; size_bytes: number; storage_key: string };
+export type ProcessingJob = { id: string; document_id: string; status: string; stage: string; progress: number; processed_pages: number; total_pages: number | null; attempts?: number; error_message?: string | null };
+export type ProcessingDocument = { id: string; file_asset_id: string; filename: string; extension: string; mime_type: string; sha256: string; status: string; parser: string; page_count: number | null; error_message?: string | null; manifest?: Record<string, any>; job?: ProcessingJob | null };
+export type UploadedFile = { id: string; name: string; size_bytes?: number; storage_key?: string; url?: string; document_id?: string; job_id?: string | null; processing_status?: string };
 export type AvailablePptExport = { export_id: string; project_id: string; title: string; file_name: string; size_bytes: number; created_at: string; cover_preview_url?: string | null };
 export type AssignmentAttachment = { id: string; file_asset_id: string; file_name: string; mime_type: string; size_bytes: number; download_url: string };
+export type SubmissionAttachment = { id: string; file_asset_id: string; file_name: string; document_id?: string | null; job_id?: string | null; processing_status?: string };
 export type Assignment = { id: string; course_id: string; title: string; description: string; due_at: string | null; max_score: number; status: string; course_name?: string; pending_count?: number; attachments?: AssignmentAttachment[] };
 
 export const fileAssetsApi = {
@@ -57,6 +61,7 @@ export const assignmentsApi = {
   create: (courseId: string, payload: { title: string; description: string; due_at: string | null; max_score: number; file_asset_ids: string[] }) => api.post<Assignment>(`/courses/${courseId}/assignments`, payload),
   attach: (courseId: string, id: string, assetId: string) => api.post(`/courses/${courseId}/assignments/${id}/attachments`, null, { params: { file_asset_id: assetId } }),
   removeAttachment: (courseId: string, id: string, attachmentId: string) => api.delete(`/courses/${courseId}/assignments/${id}/attachments/${attachmentId}`),
+  addSubmissionAttachments: (courseId: string, assignmentId: string, submissionId: string, files: File[]) => { const form = new FormData(); files.forEach((file) => form.append("files", file)); return api.post<{ items: SubmissionAttachment[] }>(`/courses/${courseId}/assignments/${assignmentId}/submissions/${submissionId}/attachments`, form); },
 };
 export type TeacherSchedule = { course_id: string; course_code: string; course_name: string; weekday: number; start_time: string; end_time: string; room: string };
 export type TeacherDashboardData = { courses: Course[]; schedule: TeacherSchedule[]; pending_assignments: Assignment[] };
@@ -133,6 +138,12 @@ export const liveClassApi = {
 export const participantApi = {
   list: (courseId: string) => api.get<Participant[]>(`/courses/${courseId}/participants`),
 };
+export const fileApi = {
+  upload: (file: File) => { const form = new FormData(); form.append("file", file); return api.post<UploadedFile>("/files", form); },
+  document: (id: string) => api.get<ProcessingDocument>(`/file-processing/documents/${id}`),
+  job: (id: string) => api.get<ProcessingJob>(`/file-processing/jobs/${id}`),
+  retry: (id: string) => api.post<ProcessingJob>(`/file-processing/jobs/${id}:retry`),
+};
 export const discussionApi = {
   list: (courseId: string) => api.get<DiscussionComment[]>(`/courses/${courseId}/discussion`),
   create: (courseId: string, content: string) => api.post<DiscussionComment>(`/courses/${courseId}/discussion`, { content }),
@@ -153,12 +164,13 @@ export const courseMaterialsApi = {
 };
 export const studentApi = {
   dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),
-  coursewareQuery: (payload: { question: string; course_id?: string }) => api.post<CoursewareQuery>("/courseware-agent/query", payload),
+  coursewareQuery: (payload: { question: string; course_id?: string; conversation_id?: string; attachment_ids?: string[] }) => api.post<CoursewareQuery>("/courseware-agent/query", payload),
   coursewareConversations: () => api.get<AgentConversation[]>("/courseware-agent/conversations"),
   createCoursewareConversation: (title = "新对话") => api.post<AgentConversation>("/courseware-agent/conversations", { title }),
   coursewareConversation: (id: string) => api.get<AgentConversation & { messages: AgentMessage[] }>(`/courseware-agent/conversations/${id}`),
   deleteCoursewareConversation: (id: string) => api.delete(`/courseware-agent/conversations/${id}`),
-  appendCoursewareMessage: (id: string, payload: { role: "user" | "assistant"; content: string; citations?: unknown[]; model?: string | null }) => api.post(`/courseware-agent/conversations/${id}/messages`, payload),
+  appendCoursewareMessage: (id: string, payload: { role: "user" | "assistant"; content: string; citations?: unknown[]; model?: string | null; attachment_ids?: string[] }) => api.post(`/courseware-agent/conversations/${id}/messages`, payload),
+  uploadConversationAttachment: (id: string, file: File) => { const form = new FormData(); form.append("file", file); return api.post<UploadedFile>(`/courseware-agent/conversations/${id}/attachments`, form); },
 };
 export const pptApi = {
   projects: () => api.get<{ items: PptProject[] }>("/ppt/projects"),

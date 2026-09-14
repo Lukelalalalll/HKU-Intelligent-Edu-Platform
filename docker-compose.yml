@@ -20,5 +20,54 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: hku-edu-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_worker.celery_app worker --loglevel=INFO --concurrency=2
+    environment:
+      DATABASE_URL: postgresql+psycopg://hku:hku_dev_password@postgres:5432/hku_edu
+      TASK_BROKER_URL: redis://redis:6379/0
+      TASK_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+
+  backend-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_worker.celery_app beat --loglevel=INFO
+    environment:
+      DATABASE_URL: postgresql+psycopg://hku:hku_dev_password@postgres:5432/hku_edu
+      TASK_BROKER_URL: redis://redis:6379/0
+      TASK_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+
 volumes:
   postgres_data:
+  redis_data:

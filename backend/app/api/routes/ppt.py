@@ -2,7 +2,6 @@ import asyncio
 import json
 import shutil
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, Response
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_roles
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptGenerationJob, User, UserRole, FileAsset
+from app.models import PptAgentEvent, PptExportJob, PptPage, PptProject, PptGenerationJob, User, UserRole, FileAsset, FileProcessingDocument
 from app.storage import LocalStorage
 from app.schemas.ppt import ActionIn, BatchIn, ExportIn, MessageIn, OutlineGenerateIn, PagePatchIn, ProjectCreateIn, ProjectPatchIn, ProviderConfigIn, RequirementPatchIn, RequirementChatIn, DocumentPatchIn, StoryboardPatchIn, CheckpointConfirmIn, ThemeSelectIn, LayoutAssignmentsIn, VisualSelectionIn
 from app.services.ppt_agent import PptAgentService
@@ -21,7 +20,7 @@ from app.services.ppt_theme import get_theme, list_layouts, list_themes, render_
 
 router = APIRouter(prefix="/api/ppt", tags=["ppt-agent"])
 teacher = Depends(require_roles(UserRole.teacher))
-export_executor = ThreadPoolExecutor(max_workers=2)
+export_executor = None  # compatibility alias; dispatch is centralized
 
 
 def svc(db: Session = Depends(get_db), user: User = teacher) -> PptAgentService:
@@ -324,8 +323,11 @@ def export_project(project_id: str, payload: ExportIn, service: PptAgentService 
     p = service.project(project_id)
     active = service.db.scalar(select(PptExportJob).where(PptExportJob.project_id == p.id, PptExportJob.status.in_(["queued", "running"])).order_by(PptExportJob.created_at.desc()))
     if active: return {"id": active.id, "status": active.status}
+    from app.jobs.dispatcher import stage_and_publish
     job = PptExportJob(project_id=p.id, status="queued"); service.db.add(job); service.db.commit(); service.db.refresh(job)
-    export_executor.submit(_run_export_job, job.id, p.id, payload.filename)
+    task_id = f"ppt-export:{job.id}"
+    job.queue_task_id = task_id
+    stage_and_publish(service.db, "ppt_export", (job.id, p.id, payload.filename), task_id)
     return {"id": job.id, "status": job.status}
 
 

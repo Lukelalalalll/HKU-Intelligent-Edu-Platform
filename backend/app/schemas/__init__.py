@@ -140,6 +140,10 @@ class CourseMaterialOut(BaseModel):
     download_url: str
     processing_status: str = "pending"
     processing_error: str | None = None
+    document_id: str | None = None
+    job_id: str | None = None
+    processing_parser: str | None = None
+    processing_fallback_reason: str | None = None
 
 
 class CourseChapterOut(BaseModel):
@@ -154,6 +158,7 @@ class CoursewareQueryIn(BaseModel):
     question: str = Field(min_length=1, max_length=20000)
     course_id: str | None = None
     conversation_id: str | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
 
 class CoursewareCitationOut(BaseModel):
     course_id: str
@@ -215,6 +220,7 @@ class AssignmentOut(BaseModel):
 class SubmissionCreate(BaseModel):
     content: str = ""
     file_asset_id: str | None = None
+    file_asset_ids: list[str] = Field(default_factory=list)
 
 class SubmissionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -226,6 +232,7 @@ class SubmissionOut(BaseModel):
     submitted_at: datetime
     score: int | None
     feedback: str
+    attachments: list[dict] = Field(default_factory=list)
 
 class TeacherScheduleOut(ScheduleIn):
     course_id: str
@@ -351,3 +358,4 @@ class AgentMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=20000)
     citations: list | dict = Field(default_factory=list)
     model: str | None = Field(default=None, max_length=100)
+    attachment_ids: list[str] = Field(default_factory=list)

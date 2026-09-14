@@ -30,7 +30,13 @@ frontend/.vite/
 
 # Runtime data
 backend/uploads/
+backend/backend/
+backend/processed/
+backend/ppt_storage/
+backend/courseware_rag_data/
+backend/runtime/
 postgres_data/
+redis_data/
 *.sqlite3
 *.db
 
@@ -41,4 +47,3 @@ postgres_data/
 .DS_Store
 Thumbs.db
 *.swp
-

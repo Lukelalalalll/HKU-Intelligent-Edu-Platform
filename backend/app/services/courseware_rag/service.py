@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
@@ -12,8 +11,8 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import Course, CourseChapter, CourseMaterial, CourseMaterialChunk, CourseMaterialIngestion, Enrollment
 from app.services.ai_gateway import gateway_for
+from app.services.file_retrieval import retrieve_chunks, context_text
 
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="courseware-rag")
 
 def _read_document(path: Path) -> str:
     suffix = path.suffix.lower()
@@ -85,7 +84,12 @@ def ingest_material(material_id: str) -> None:
         db.close()
 
 def queue_ingestion(material_id: str):
-    _executor.submit(ingest_material, material_id)
+    from app.jobs.dispatcher import stage_and_publish
+    db = SessionLocal()
+    try:
+        stage_and_publish(db, "courseware_rag", (material_id,), f"courseware-rag:{material_id}")
+    finally:
+        db.close()
 
 def query_courses(db: Session, question: str, student_id: str, course_id: str | None = None):
     courses = db.scalars(select(Course).join(Enrollment).where(Enrollment.student_id == student_id)).all()
@@ -124,3 +128,14 @@ def courseware_rag(db: Session, question: str, student_id: str, course_id: str |
             citations.append({"course_id": course.id, "course_code": course.code, "course_name": course.name, "chapter_id": chapter.id, "chapter_title": chapter.title, "material_id": material.id, "material_title": material.title, "page_number": chunk.page_number, "href": f"/courses/{course.id}?chapter={chapter.id}&material={material.id}"})
     gateway = gateway_for(db, "student_lecturer") if chunks else None
     return {"course_id": course.id, "course": {"id": course.id, "code": course.code, "name": course.name}, "answer": answer, "citations": citations, "confidence": 0.85 if chunks else 0.1, "needs_course_selection": False, "candidate_courses": [], "model": gateway.model if gateway else None}
+
+
+def unified_courseware_rag(db: Session, question: str, student_id: str, course_id: str | None = None, conversation_id: str | None = None, attachment_ids: list[str] | None = None):
+    evidence = retrieve_chunks(db, question, user_id=student_id, course_id=course_id, conversation_id=conversation_id, attachment_ids=attachment_ids, top_k=8, include_images=True)
+    course = db.get(Course, course_id) if course_id else None
+    if not evidence:
+        return {"course_id": course_id, "course": {"id": course.id, "code": course.code, "name": course.name} if course else None, "answer": "当前上下文还没有可用的已索引文件，请先上传资料并等待处理完成。", "citations": [], "confidence": 0.0, "needs_course_selection": False, "candidate_courses": [], "model": None}
+    gateway = gateway_for(db, "student_lecturer")
+    answer = gateway.chat("你是课程 AI 讲师。只能依据提供的文件证据回答，必须引用文件名和页码；不确定时明确说明。", f"课程：{course.code if course else ''}\n文件证据：\n{context_text(evidence)}\n\n学生问题：{question}")
+    citations = [{"course_id": course_id or "", "course_code": course.code if course else "", "course_name": course.name if course else "", "chapter_id": "", "chapter_title": item.get("section") or "文件内容", "material_id": item["document_id"], "material_title": item["filename"], "page_number": item.get("page"), "href": item["artifact_url"]} for item in evidence]
+    return {"course_id": course_id, "course": {"id": course.id, "code": course.code, "name": course.name} if course else None, "answer": answer, "citations": citations, "confidence": min(0.95, 0.55 + 0.08 * len(evidence)), "needs_course_selection": False, "candidate_courses": [], "model": gateway.model}

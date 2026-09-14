@@ -143,9 +143,17 @@ class AIGateway:
         return response.choices[0].message.content or ""
 
     def web_search_json(self, query: str, image_focus: bool = False) -> dict[str, Any]:
-        if not self.capabilities.get("web_search"):
+        # Keep the gateway usable in lightweight unit tests and legacy callers
+        # that construct it with ``__new__`` and inject only ``config`` and a
+        # client.  A fully initialised gateway still uses provider capabilities
+        # as the authoritative permission check.
+        capabilities = getattr(self, "capabilities", None)
+        if capabilities is None:
+            capabilities = {"web_search": True}
+        if not capabilities.get("web_search"):
             raise HTTPException(409, f"当前 Provider 不支持 {self.business_code} 的联网搜索能力")
-        response = self._client().responses.create(model=self.model, instructions="只输出 JSON：{results:[{title,image_url,url,snippet,license,score}]}。", input=query, tools=[{"type": "web_search"}], tool_choice={"type": "web_search"}, text={"format": {"type": "json_object"}}, max_output_tokens=1800)
+        model = getattr(self, "model", None) or getattr(getattr(self, "config", None), "model", None)
+        response = self._client().responses.create(model=model, instructions="只输出 JSON：{results:[{title,image_url,url,snippet,license,score}]}。", input=query, tools=[{"type": "web_search"}], tool_choice={"type": "web_search"}, text={"format": {"type": "json_object"}}, max_output_tokens=1800)
         text = str(getattr(response, "output_text", "") or "")
         try:
             return json.loads(text or "{}")

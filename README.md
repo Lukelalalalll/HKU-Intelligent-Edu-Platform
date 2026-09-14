@@ -7,7 +7,7 @@
 - Frontend: React 18、TypeScript、Vite、React Router、Zustand、Axios
 - Backend: FastAPI、SQLAlchemy 2、Alembic、PostgreSQL
 - Auth: HttpOnly Cookie JWT（access/refresh）
-- Storage: `backend/uploads/` 与 `backend/ppt_storage/` 本地磁盘，数据库保存文件元数据
+- Storage: `backend/uploads/`、`backend/ppt_storage/` 和 `backend/processed/` 是本地运行时目录，数据库保存文件元数据；这些目录不进入 Git
 
 ## 环境要求
 
@@ -21,7 +21,7 @@
 ### 1. 启动 PostgreSQL
 
 ```powershell
-docker compose up -d postgres
+docker compose up -d postgres redis
 ```
 
 ### 2. 初始化后端环境
@@ -166,6 +166,17 @@ VISUAL_SEARCH_MAX_CONCURRENCY=3
 $env:VISUAL_SEARCH_PROXY = "http://127.0.0.1:7890"
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+生产或需要异步任务的开发环境另开终端启动 Celery worker：
+
+```powershell
+cd backend
+celery -A celery_worker.celery_app worker --loglevel=INFO --pool=solo
+```
+
+PPT 生成、视觉检索、文件解析、课程资料索引和 PPT 导出统一通过 Redis
+队列执行；数据库中的任务行是状态查询和恢复的唯一来源。Redis 不可用时，
+API 仍会保留已提交的 outbox 记录，服务恢复后会自动重新投递。
 
 开发时如果希望使用当前 Chrome/VPN 的代理路径，可改成：
 
