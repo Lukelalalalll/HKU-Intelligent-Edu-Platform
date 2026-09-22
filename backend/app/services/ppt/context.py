@@ -60,18 +60,8 @@ def _cipher():
         import base64, hashlib
         key = base64.urlsafe_b64encode(hashlib.sha256(settings.jwt_secret_key.encode()).digest())
         return Fernet(key)
-    except ImportError:
-        # Keep the app runnable before optional wheels are installed; production
-        # requirements include cryptography/Fernet.
-        import base64, hashlib
-        key = hashlib.sha256(settings.jwt_secret_key.encode()).digest()
-        class LocalCipher:
-            def encrypt(self, value: bytes) -> bytes:
-                return base64.urlsafe_b64encode(bytes(v ^ key[i % len(key)] for i, v in enumerate(value)))
-            def decrypt(self, value: bytes) -> bytes:
-                raw = base64.urlsafe_b64decode(value)
-                return bytes(v ^ key[i % len(key)] for i, v in enumerate(raw))
-        return LocalCipher()
+    except ImportError as exc:
+        raise RuntimeError("cryptography is required for provider key encryption") from exc
 
 
 def encrypt_api_key(value: str) -> str:

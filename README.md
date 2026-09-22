@@ -178,6 +178,13 @@ PPT 生成、视觉检索、文件解析、课程资料索引和 PPT 导出统�
 队列执行；数据库中的任务行是状态查询和恢复的唯一来源。Redis 不可用时，
 API 仍会保留已提交的 outbox 记录，服务恢复后会自动重新投递。
 
+### Backend v2 task APIs
+
+新客户端可使用任务化接口：`/api/v2/ppt/projects/{id}/generation`、
+`/api/v2/ppt/projects/{id}/visual-research`、`/api/v2/ppt/projects/{id}/exports`
+和 `/api/v2/files`。旧 `/api/ppt` 与 `/api/files` 路径保留用于迁移；部署前执行
+`cd backend && alembic upgrade head`，其中 `0019_task_outbox_leases` 增加任务重试时间和过期 lease。
+
 开发时如果希望使用当前 Chrome/VPN 的代理路径，可改成：
 
 ```dotenv

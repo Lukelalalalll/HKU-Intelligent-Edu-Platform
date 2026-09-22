@@ -13,6 +13,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import AiBusinessBinding, AiProvider
+from app.services.provider_contract import (
+    InvalidProviderResponse,
+    MissingProviderCapability,
+    ModelProvider,
+    ProviderRateLimited,
+    ProviderTimeout,
+    ProviderUnavailable,
+)
 
 
 BUSINESSES = {
@@ -26,15 +34,8 @@ def _cipher():
     try:
         from cryptography.fernet import Fernet
         return Fernet(base64.urlsafe_b64encode(hashlib.sha256(settings.jwt_secret_key.encode()).digest()))
-    except ImportError:
-        key = hashlib.sha256(settings.jwt_secret_key.encode()).digest()
-        class LocalCipher:
-            def encrypt(self, value: bytes) -> bytes:
-                return base64.urlsafe_b64encode(bytes(v ^ key[i % len(key)] for i, v in enumerate(value)))
-            def decrypt(self, value: bytes) -> bytes:
-                raw = base64.urlsafe_b64decode(value)
-                return bytes(v ^ key[i % len(key)] for i, v in enumerate(raw))
-        return LocalCipher()
+    except ImportError as exc:
+        raise RuntimeError("cryptography is required for provider key encryption") from exc
 
 
 def encrypt_api_key(value: str) -> str:
@@ -67,7 +68,7 @@ def ensure_ai_defaults(db: Session) -> None:
     db.commit()
 
 
-class AIGateway:
+class AIGateway(ModelProvider):
     """Resolve a business mapping and expose a provider-neutral model API."""
 
     def __init__(self, db: Session, business_code: str):
@@ -93,22 +94,44 @@ class AIGateway:
         return _cached_client(self.api_key, self.base_url.rstrip("/"), self.timeout)
 
     def json(self, system: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = self._client().chat.completions.create(model=self.model, temperature=0.2, response_format={"type": "json_object"}, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
+        try:
+            response = self._client().chat.completions.create(model=self.model, temperature=0.2, response_format={"type": "json_object"}, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
+        except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
+            raise _classify_provider_error(exc) from exc
         text = response.choices[0].message.content or "{}"
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
             match = re.search(r"\{[\s\S]*\}", text)
             if not match:
-                raise HTTPException(502, "模型返回的结构不是有效 JSON") from exc
-            return json.loads(match.group(0))
+                raise InvalidProviderResponse("模型返回的结构不是有效 JSON") from exc
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError as parse_exc:
+                raise InvalidProviderResponse("模型返回的结构不是有效 JSON") from parse_exc
+
+    generate_json = json
 
     def text(self, system: str, payload: dict[str, Any]) -> str:
-        response = self._client().chat.completions.create(model=self.model, temperature=0.3, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
+        try:
+            response = self._client().chat.completions.create(model=self.model, temperature=0.3, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
+        except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
+            raise _classify_provider_error(exc) from exc
         return response.choices[0].message.content or ""
 
+    generate_text = text
+
     def stream_json(self, system: str, payload: dict[str, Any]):
-        response = self._client().chat.completions.create(model=self.model, temperature=0.2, response_format={"type": "json_object"}, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], stream=True)
+        try:
+            response = self._client().chat.completions.create(model=self.model, temperature=0.2, response_format={"type": "json_object"}, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], stream=True)
+        except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
+            raise _classify_provider_error(exc) from exc
         raw = ""
         emitted = ""
         for item in response:
@@ -134,8 +157,11 @@ class AIGateway:
         except json.JSONDecodeError as exc:
             match = re.search(r"\{[\s\S]*\}", raw)
             if not match:
-                raise HTTPException(502, "模型返回的结构不是有效 JSON") from exc
-            data = json.loads(match.group(0))
+                raise InvalidProviderResponse("模型返回的结构不是有效 JSON") from exc
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError as parse_exc:
+                raise InvalidProviderResponse("模型返回的结构不是有效 JSON") from parse_exc
         yield {"type": "final", "data": data}
 
     def chat(self, system: str, user: str) -> str:
@@ -151,7 +177,7 @@ class AIGateway:
         if capabilities is None:
             capabilities = {"web_search": True}
         if not capabilities.get("web_search"):
-            raise HTTPException(409, f"当前 Provider 不支持 {self.business_code} 的联网搜索能力")
+            raise MissingProviderCapability(f"当前 Provider 不支持 {self.business_code} 的联网搜索能力")
         model = getattr(self, "model", None) or getattr(getattr(self, "config", None), "model", None)
         response = self._client().responses.create(model=model, instructions="只输出 JSON：{results:[{title,image_url,url,snippet,license,score}]}。", input=query, tools=[{"type": "web_search"}], tool_choice={"type": "web_search"}, text={"format": {"type": "json_object"}}, max_output_tokens=1800)
         text = str(getattr(response, "output_text", "") or "")
@@ -159,8 +185,28 @@ class AIGateway:
             return json.loads(text or "{}")
         except json.JSONDecodeError as exc:
             match = re.search(r"\{[\s\S]*\}", text)
-            if not match: raise HTTPException(502, "联网搜索返回的结构不是有效 JSON") from exc
-            return json.loads(match.group(0))
+            if not match: raise InvalidProviderResponse("联网搜索返回的结构不是有效 JSON") from exc
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError as parse_exc:
+                raise InvalidProviderResponse("联网搜索返回的结构不是有效 JSON") from parse_exc
+
+    def health_check(self) -> dict[str, Any]:
+        if not self.api_key:
+            return {"status": "unconfigured", "business_code": self.business_code}
+        return {"status": "configured", "business_code": self.business_code, "model": self.model, "base_url": self.base_url}
+
+
+def _classify_provider_error(exc: Exception) -> ProviderError:
+    name = type(exc).__name__.lower()
+    text = str(exc).lower()
+    if "timeout" in name or "timeout" in text:
+        return ProviderTimeout("AI provider request timed out")
+    if "rate" in name or "429" in text:
+        return ProviderRateLimited("AI provider rate limit reached")
+    if "connection" in name or "connect" in text or "network" in text:
+        return ProviderUnavailable("AI provider is unavailable")
+    return ProviderUnavailable("AI provider request failed")
 
 
 @lru_cache(maxsize=32)

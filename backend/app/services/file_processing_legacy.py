@@ -207,19 +207,13 @@ def _process(db: Session, document: FileProcessingDocument, job: FileProcessingJ
     root.mkdir(parents=True, exist_ok=True); (root / "assets").mkdir(exist_ok=True); (root / "logs").mkdir(exist_ok=True)
     target = root / f"source{document.extension}"; shutil.copy2(source, target)
     document.status = "processing"; job.status = "running"; job.stage = "extracting"; job.attempts += 1; job.started_at = now_utc(); db.commit()
-    fallback_error = None
-    if document.extension == ".pdf":
-        try:
-            pages = _mineru_pdf(target, root); parser = "mineru"
-        except Exception as exc:
-            fallback_error = str(exc)[:2000]; pages = _native_pdf(target); parser = "native_pdf_fallback"
-    elif document.extension in {".pptx", ".docx", ".xlsx", ".xls", ".txt", ".md", ".markdown", ".csv", ".json"}:
-        try:
-            pages = _office_pages(target); parser = "native_office"
-        except Exception as exc:
-            fallback_error = str(exc)[:2000]; pages = _office_fallback(target) if document.extension in {".pptx", ".docx", ".xlsx", ".xls"} else _office_pages(target); parser = "native_office_fallback"
-    else:
-        pages = [{"page": 1, "width": 0, "height": 0, "blocks": [_block(1, 1, "image", "", "original", .9)]}]; parser = "original_image"
+    # Parser selection is now capability based and isolated from persistence.
+    # Keep this function as the compatibility orchestration entrypoint while
+    # delegating extraction to the new registry.
+    from app.services.file_processing.orchestration import parse_document
+
+    parsed = parse_document(target, root, document.mime_type)
+    pages, parser, fallback_error = parsed.pages, parsed.parser, parsed.fallback_error
     job.total_pages = len(pages)
     job.processed_pages = 0
     db.commit()
@@ -279,17 +273,19 @@ def process_job(job_id: str) -> None:
             enqueue_job(job_id)
 
 
-def enqueue_job(job_id: str) -> None:
+def enqueue_job(job_id: str, db: Session | None = None) -> None:
     from app.jobs.dispatcher import stage_and_publish
 
     # The business transaction has already committed before this function is
     # called.  Persisting an outbox row here makes broker outages recoverable
     # without coupling API routes to Celery.
-    db = SessionLocal()
+    owns_session = db is None
+    db = db or SessionLocal()
     try:
         stage_and_publish(db, "file_processing", (job_id,), f"file-processing:{job_id}")
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def recover_jobs() -> None:
@@ -323,7 +319,7 @@ def ensure_document_for_asset(db: Session, asset: FileAsset, *, target_type: str
     if not job:
         job = db.scalar(select(FileProcessingJob).where(FileProcessingJob.document_id == document.id).order_by(FileProcessingJob.created_at.desc()))
     db.commit()
-    if job and job.status == "queued": enqueue_job(job.id)
+    if job and job.status == "queued": enqueue_job(job.id, db=db)
     return document, job
 
 

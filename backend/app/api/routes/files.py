@@ -10,15 +10,14 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models import FileAsset, User
 from app.storage import LocalStorage
-from app.services.file_processing import upload_asset
+from app.services.file_processing import upload_asset_stream
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 @router.post("", status_code=201)
 def upload_file(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
-    content = file.file.read()
     try:
-        asset, document, job = upload_asset(db, uploader_id=user.id, filename=file.filename or "upload", mime_type=file.content_type, content=content)
+        asset, document, job = upload_asset_stream(db, uploader_id=user.id, filename=file.filename or "upload", mime_type=file.content_type, file=file.file)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"id": asset.id, "name": asset.original_name, "size_bytes": asset.size_bytes, "storage_key": asset.storage_key, "url": LocalStorage(settings.upload_path).get_url(asset.storage_key), "document_id": document.id, "job_id": job.id if job else None, "processing_status": document.status}

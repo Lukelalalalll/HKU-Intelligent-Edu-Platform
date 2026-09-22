@@ -1,40 +1,41 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.core.config import settings
-from app.db.session import Base, engine
 from app.db.session import SessionLocal
-from app.api.routes import agent, assignments, auth, courses, files, file_processing, teacher, student, ppt, profile, live_class, courseware_agent, lesson_plan, admin_ai, teacher_video
+from app.api.routes import agent, assignments, auth, courses, files, files_v2, file_processing, teacher, student, ppt, ppt_v2, profile, live_class, courseware_agent, lesson_plan, admin_ai, teacher_video
 from app.models import *  # noqa: F401,F403
 from app.services.ai_gateway import ensure_ai_defaults
 from app.services.file_processing import recover_jobs
+from app.services.provider_contract import ProviderError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    # Resume jobs left queued/running by a development-server restart.
+    # Schema creation belongs to Alembic.  The API process only performs
+    # lightweight recovery of work that was committed before a restart.
     db = SessionLocal()
     try:
         ensure_ai_defaults(db)
         recover_jobs()
-        from app.jobs.dispatcher import recover_outbox
+        from app.jobs.dispatcher import recover_outbox, recover_stale_jobs
+        recover_stale_jobs()
         recover_outbox()
-        from sqlalchemy import select
-        from app.jobs.dispatcher import dispatch
-        for job in db.scalars(select(PptGenerationJob).where(PptGenerationJob.status.in_(["queued", "running"]))):
-            project = db.get(PptProject, job.project_id)
-            if project:
-                dispatch("ppt_generation", job.id, project.id, project.owner_id, task_id=f"ppt-generation:{job.id}")
-        for job in db.scalars(select(VideoGenerationJob).where(VideoGenerationJob.status.in_(["queued", "preparing", "rendering"]))):
-            dispatch("video_generation", job.id, task_id=f"video-generation:{job.id}")
     finally:
         db.close()
     yield
 
 app = FastAPI(title="HKU Intelligent Edu Platform", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(ProviderError)
+async def provider_error_handler(request: Request, exc: ProviderError):
+    status_code = 503 if getattr(exc, "retryable", False) else 502
+    return JSONResponse(status_code=status_code, content={"type": "about:blank", "title": type(exc).__name__, "detail": str(exc), "retryable": bool(getattr(exc, "retryable", False))})
+
+
 app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(auth.router)
 app.include_router(courses.router)
@@ -45,6 +46,8 @@ app.include_router(teacher.router)
 app.include_router(student.router)
 app.include_router(agent.router)
 app.include_router(ppt.router)
+app.include_router(ppt_v2.router)
+app.include_router(files_v2.router)
 app.include_router(profile.router)
 app.include_router(live_class.router)
 app.include_router(live_class.webhook_router)
@@ -56,14 +59,39 @@ app.include_router(teacher_video.webhook_router)
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "backend"}
 
 @app.get("/readyz")
 def readyz():
-    import sys
     import shutil
-    mineru = shutil.which(settings.file_processing_mineru_command) is not None or (Path(sys.executable).with_name("mineru.exe").exists() if settings.file_processing_mineru_command.lower() == "mineru" else False)
-    if settings.file_processing_require_mineru and not mineru:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="MinerU is required but not available")
-    return {"status": "ready", "mineru": mineru}
+    from fastapi import HTTPException
+
+    checks = {"database": False, "storage": False, "mineru": False, "broker": True}
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception:
+        pass
+    try:
+        settings.upload_path.mkdir(parents=True, exist_ok=True)
+        probe = settings.upload_path / ".readyz"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        checks["storage"] = True
+    except OSError:
+        pass
+    checks["mineru"] = shutil.which(settings.file_processing_mineru_command) is not None
+    if settings.task_queue_enabled:
+        try:
+            from app.jobs.celery_app import celery_app
+            if celery_app is not None:
+                connection = celery_app.connection()
+                connection.ensure_connection(max_retries=0)
+                connection.release()
+        except Exception:
+            checks["broker"] = False
+    required = ["database", "storage"] + (["mineru"] if settings.file_processing_require_mineru else [])
+    if not all(checks[name] for name in required) or not checks["broker"]:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
+    return {"status": "ready", "checks": checks}

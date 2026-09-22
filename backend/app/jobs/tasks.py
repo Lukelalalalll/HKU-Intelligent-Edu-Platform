@@ -32,9 +32,9 @@ def run_ppt_visual_research(job_id: str, project_id: str, user_id: str):
 
 
 def run_ppt_export(export_id: str, project_id: str, filename: str | None = None):
-    from app.api.routes.ppt import _run_export_job
+    from app.jobs.handlers import run_ppt_export as handler
 
-    return _run_export_job(export_id, project_id, filename)
+    return handler(export_id, project_id, filename)
 
 def run_video_generation(job_id: str):
     from app.services.video_generation import run_video_job
