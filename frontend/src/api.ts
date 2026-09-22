@@ -1,7 +1,6 @@
-export { api, getDevAccessToken, setDevAccessToken, DEV_SESSION_STORAGE_KEY } from "./lib/apiClient";
-export type { ApiError } from "./lib/apiClient";
-import { api, getDevAccessToken } from "./lib/apiClient";
-const isDevelopment = import.meta.env.DEV;
+export { api, getDevAccessToken, setDevAccessToken, DEV_SESSION_STORAGE_KEY, consumeSse, createStreamHeaders, getApiErrorMessage, isApiError } from "./lib/apiClient";
+export type { ApiError, SseEvent } from "./lib/apiClient";
+import { api, consumeSse, createStreamHeaders } from "./lib/apiClient";
 export type Role = "teacher" | "student" | "admin";
 export const SUPPORTED_ROLES: Role[] = ["teacher", "student", "admin"];
 export type User = { id: string; username: string; email: string; name: string; avatar_url: string | null; role: Role };
@@ -23,7 +22,8 @@ export type LiveClass = { course_id: string; course_name: string; teacher_name: 
 export type LiveClassAuthorization = { meeting_number: string; sdk_jwt: string; sdk_key: string; zak: string | null; user_name: string; role: number; expires_at: string; join_url: string };
 export type FileAsset = { id: string; name: string; size_bytes: number; storage_key: string };
 export type ProcessingJob = { id: string; document_id: string; status: string; stage: string; progress: number; processed_pages: number; total_pages: number | null; attempts?: number; error_message?: string | null };
-export type ProcessingDocument = { id: string; file_asset_id: string; filename: string; extension: string; mime_type: string; sha256: string; status: string; parser: string; page_count: number | null; error_message?: string | null; manifest?: Record<string, any>; job?: ProcessingJob | null };
+export type JsonObject = Record<string, unknown>;
+export type ProcessingDocument = { id: string; file_asset_id: string; filename: string; extension: string; mime_type: string; sha256: string; status: string; parser: string; page_count: number | null; error_message?: string | null; manifest?: JsonObject; job?: ProcessingJob | null };
 export type UploadedFile = { id: string; name: string; size_bytes?: number; storage_key?: string; url?: string; document_id?: string; job_id?: string | null; processing_status?: string };
 export type AvailablePptExport = { export_id: string; project_id: string; title: string; file_name: string; size_bytes: number; created_at: string; cover_preview_url?: string | null };
 export type AssignmentAttachment = { id: string; file_asset_id: string; file_name: string; mime_type: string; size_bytes: number; download_url: string };
@@ -126,7 +126,7 @@ export type VideoAsset = { id: string; project_id: string; job_id: string; asset
 export type VideoSseEvent = { type: "status" | "error"; job_id: string; status?: string; stage?: string; progress?: number; current_scene?: number; total_scenes?: number; detail?: string };
 export type VideoProjectCreatePayload = { title: string; course_id?: string; description?: string; input_text?: string; learning_objectives?: string[]; audience?: string; language?: string; duration_seconds?: number; style?: string; voice_enabled?: boolean; captions_enabled?: boolean; avatar_enabled?: boolean; provider?: "coze" | "local" };
 export const teacherVideoApi = {
-  listProjects: () => api.get<VideoProject[]>("/teacher/video-projects"),
+  listProjects: (config?: import("axios").AxiosRequestConfig) => api.get<VideoProject[]>("/teacher/video-projects", config),
   createProject: (payload: VideoProjectCreatePayload) => api.post<VideoProject>("/teacher/video-projects", payload),
   getProject: (id: string, config?: import("axios").AxiosRequestConfig) => api.get<VideoProject>(`/teacher/video-projects/${id}`, config),
   patchProject: (id: string, payload: Record<string, unknown>) => api.patch<VideoProject>(`/teacher/video-projects/${id}`, payload),
@@ -140,14 +140,8 @@ export const teacherVideoApi = {
   scenes: (id: string, config?: import("axios").AxiosRequestConfig) => api.get<VideoScene[]>(`/teacher/video-projects/${id}/scenes`, config),
   patchScene: (id: string, sceneId: string, payload: Record<string, unknown>) => api.patch<VideoScene>(`/teacher/video-projects/${id}/scenes/${sceneId}`, payload),
   streamEvents: async (id: string, onEvent: (event: VideoSseEvent) => void, signal?: AbortSignal) => {
-    const headers: Record<string, string> = { Accept: "text/event-stream" };
-    if (isDevelopment) { headers["X-HKU-Session-Mode"] = "isolated"; const token = getDevAccessToken(); if (token) headers.Authorization = `Bearer ${token}`; }
-    const response = await fetch(`/api/teacher/video-projects/${id}/events/stream`, { headers, credentials: "include", signal });
-    if (!response.ok || !response.body) throw new Error((await response.text()) || "视频进度连接失败");
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = "";
-    const consume = (frame: string) => { const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n"); if (!data) return; try { onEvent(JSON.parse(data) as VideoSseEvent); } catch { /* ignore malformed frame */ } };
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); let split = buffer.indexOf("\n\n"); while (split >= 0) { consume(buffer.slice(0, split)); buffer = buffer.slice(split + 2); split = buffer.indexOf("\n\n"); } }
-    if (buffer.trim()) consume(buffer);
+    const response = await fetch(`/api/teacher/video-projects/${id}/events/stream`, { headers: createStreamHeaders(), credentials: "include", signal });
+    await consumeSse<VideoSseEvent>(response, onEvent, signal);
   },
   downloadAsset: (id: string, assetId: string) => api.get<Blob>(`/teacher/video-projects/${id}/assets/${assetId}/download`, { responseType: "blob" }),
   assets: (id: string) => api.get<VideoAsset[]>(`/teacher/video-projects/${id}/assets`),
@@ -160,12 +154,12 @@ export const profileApi = {
   changePassword: (payload: PasswordChange) => api.put("/profile/password", payload),
 };
 export const liveClassApi = {
-  get: (courseId: string) => api.get<LiveClass>(`/courses/${courseId}/live-class`),
+  get: (courseId: string, config?: import("axios").AxiosRequestConfig) => api.get<LiveClass>(`/courses/${courseId}/live-class`, config),
   provision: (courseId: string) => api.post<LiveClass>(`/courses/${courseId}/live-class/provision`),
-  authorize: (courseId: string, action: "start" | "join", meetingId?: string) => api.post<LiveClassAuthorization>(`/courses/${courseId}/live-class/authorize`, { action, meeting_id: meetingId }),
+  authorize: (courseId: string, action: "start" | "join", meetingId?: string, config?: import("axios").AxiosRequestConfig) => api.post<LiveClassAuthorization>(`/courses/${courseId}/live-class/authorize`, { action, meeting_id: meetingId }, config),
 };
 export const participantApi = {
-  list: (courseId: string) => api.get<Participant[]>(`/courses/${courseId}/participants`),
+  list: (courseId: string, config?: import("axios").AxiosRequestConfig) => api.get<Participant[]>(`/courses/${courseId}/participants`, config),
 };
 export const fileApi = {
   upload: (file: File) => { const form = new FormData(); form.append("file", file); return api.post<UploadedFile>("/files", form); },
@@ -210,14 +204,10 @@ export const pptApi = {
   requirements: (id: string) => api.get<PptRequirement>(`/ppt/projects/${id}/requirements`),
   requirementChat: (id: string, payload: { content?: string; option_id?: string; option_label?: string; bootstrap?: boolean }) => api.post<RequirementChatResponse>(`/ppt/projects/${id}/requirements/chat`, payload),
   streamRequirementChat: async (id: string, payload: { content?: string; option_id?: string; option_label?: string; bootstrap?: boolean }, handlers: { onEvent?: (event: PptChatStreamEvent) => void } = {}, signal?: AbortSignal) => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (isDevelopment) { headers["X-HKU-Session-Mode"] = "isolated"; const token = getDevAccessToken(); if (token) headers.Authorization = `Bearer ${token}`; }
-    const response = await fetch(`/api/ppt/projects/${id}/requirements/chat/stream`, { method: "POST", headers, credentials: "include", body: JSON.stringify(payload), signal });
-    if (!response.ok || !response.body) throw new Error((await response.text()) || "需求流连接失败");
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let complete: PptChatStreamEvent | undefined;
-    const consume = (frame: string) => { const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n"); if (!data) return; const event = JSON.parse(data) as PptChatStreamEvent; handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || "需求访谈失败"); };
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); let split = buffer.indexOf("\n\n"); while (split >= 0) { consume(buffer.slice(0, split)); buffer = buffer.slice(split + 2); split = buffer.indexOf("\n\n"); } }
-    if (buffer.trim()) consume(buffer); return complete;
+    const response = await fetch(`/api/ppt/projects/${id}/requirements/chat/stream`, { method: "POST", headers: createStreamHeaders("application/json"), credentials: "include", body: JSON.stringify(payload), signal });
+    let complete: PptChatStreamEvent | undefined;
+    await consumeSse<PptChatStreamEvent>(response, (event) => { handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || "需求访谈失败"); }, signal);
+    return complete;
   },
   generateRequirements: (id: string) => api.post(`/ppt/projects/${id}/requirements:generate`),
   patchRequirements: (id: string, payload: any) => api.patch(`/ppt/projects/${id}/requirements`, payload),
@@ -248,18 +238,9 @@ export const pptApi = {
   messages: (id: string, pageId?: string) => api.get<{ items: PptMessage[] }>(`/ppt/projects/${id}/messages`, { params: pageId ? { page_id: pageId } : undefined }),
   message: (id: string, content: string, pageId?: string, extra?: { option_id?: string; option_label?: string }) => api.post<{ user: PptMessage; assistant: PptMessage }>(`/ppt/projects/${id}/messages`, { content, page_id: pageId, ...extra }),
   streamMessage: async (id: string, payload: { content: string; page_id?: string; ui_surface?: string }, handlers: { onEvent?: (event: PptChatStreamEvent) => void } = {}, signal?: AbortSignal) => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (isDevelopment) {
-      headers["X-HKU-Session-Mode"] = "isolated";
-      const token = getDevAccessToken();
-      if (token) headers.Authorization = `Bearer ${token}`;
-    }
-    const response = await fetch(`/api/ppt/projects/${id}/messages/stream`, { method: "POST", headers, credentials: "include", body: JSON.stringify(payload), signal });
-    if (!response.ok || !response.body) throw new Error((await response.text()) || "消息流连接失败");
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let complete: PptChatStreamEvent | undefined;
-    const consume = (frame: string) => { const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n"); if (!data) return; try { const event = JSON.parse(data) as PptChatStreamEvent; handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || "Agent 执行失败"); } catch (error) { if (error instanceof SyntaxError) return; throw error; } };
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); let split = buffer.indexOf("\n\n"); while (split >= 0) { consume(buffer.slice(0, split)); buffer = buffer.slice(split + 2); split = buffer.indexOf("\n\n"); } }
-    if (buffer.trim()) consume(buffer);
+    const response = await fetch(`/api/ppt/projects/${id}/messages/stream`, { method: "POST", headers: createStreamHeaders("application/json"), credentials: "include", body: JSON.stringify(payload), signal });
+    let complete: PptChatStreamEvent | undefined;
+    await consumeSse<PptChatStreamEvent>(response, (event) => { handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || "Agent 执行失败"); }, signal);
     return complete;
   },
   sources: (id: string) => api.get<{ items: PptSource[] }>(`/ppt/projects/${id}/sources`),

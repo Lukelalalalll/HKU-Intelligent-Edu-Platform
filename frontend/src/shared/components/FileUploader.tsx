@@ -1,5 +1,5 @@
 import React from "react";
-import { fileApi, type ProcessingDocument, type UploadedFile } from "../../api";
+import { fileApi, getApiErrorMessage, type ProcessingDocument, type UploadedFile } from "../../api";
 
 export const PROCESSABLE_ACCEPT = ".pdf,.pptx,.docx,.xlsx,.xls,.txt,.md,.markdown,.csv,.json,image/png,image/jpeg,image/webp";
 
@@ -20,7 +20,7 @@ export default function FileUploader({ onUploaded, accept = PROCESSABLE_ACCEPT, 
       const items: UploadedFile[] = [];
       for (const file of files) items.push((await fileApi.upload(file)).data);
       onUploaded(items);
-    } catch (e: any) { setError(e.response?.data?.detail || "文件上传失败"); }
+    } catch (e: unknown) { setError(getApiErrorMessage(e, "文件上传失败")); }
     finally { setBusy(false); }
   };
   return <div className="file-uploader"><label className="file-uploader-button">{busy ? "上传中…" : "＋ 添加文件"}<input type="file" accept={accept} multiple={multiple} disabled={disabled || busy} hidden onChange={(event) => { void upload(Array.from(event.target.files || [])); event.currentTarget.value = ""; }} /></label>{error ? <span className="file-uploader-error">{error}</span> : null}</div>;

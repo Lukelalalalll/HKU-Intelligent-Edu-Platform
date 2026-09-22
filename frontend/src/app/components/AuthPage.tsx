@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { api, setDevAccessToken } from "../../api";
+import { api, getApiErrorMessage, setDevAccessToken } from "../../api";
 import { useAuth } from "../../store";
 import SiteHeader from "./SiteHeader";
 
@@ -102,8 +102,8 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
         navigate(data.user.role === "student" ? "/student" : data.user.role === "teacher" ? "/teacher" : "/admin");
         toast.success("注册成功");
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || "操作失败，请稍后重试");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "操作失败，请稍后重试"));
     } finally {
       setLoading(false);
     }
@@ -232,4 +232,3 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
     </>
   );
 }
-

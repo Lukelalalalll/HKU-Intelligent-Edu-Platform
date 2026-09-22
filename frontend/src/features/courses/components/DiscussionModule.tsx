@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { discussionApi, type DiscussionComment } from "../../../api";
+import { discussionApi, getApiErrorMessage, type DiscussionComment } from "../../../api";
 import { useAuth } from "../../../store";
 import styles from "../styles/CoursesRoute.module.css";
 
@@ -45,8 +45,8 @@ export default function DiscussionModule({ courseId }: { courseId: string }) {
       const response = await discussionApi.create(courseId, content);
       setComments((current) => [response.data, ...current]);
       setDraft("");
-    } catch (requestError: any) {
-      toast.error(requestError.response?.data?.detail || "发布评论失败");
+    } catch (requestError: unknown) {
+      toast.error(getApiErrorMessage(requestError, "发布评论失败"));
     } finally { setBusy(false); }
   };
 
@@ -60,8 +60,8 @@ export default function DiscussionModule({ courseId }: { courseId: string }) {
       setReplyDraft("");
       setReplyTarget(null);
       await load();
-    } catch (requestError: any) {
-      toast.error(requestError.response?.data?.detail || "发布回复失败");
+    } catch (requestError: unknown) {
+      toast.error(getApiErrorMessage(requestError, "发布回复失败"));
     } finally { setBusy(false); }
   };
 
@@ -72,7 +72,7 @@ export default function DiscussionModule({ courseId }: { courseId: string }) {
         ...item,
         replies: item.replies.map((reply) => reply.id === comment.id ? { ...reply, liked_by_me: response.data.liked, like_count: response.data.like_count } : reply),
       }));
-    } catch (requestError: any) { toast.error(requestError.response?.data?.detail || "更新点赞失败"); }
+    } catch (requestError: unknown) { toast.error(getApiErrorMessage(requestError, "更新点赞失败")); }
   };
 
   const remove = async (commentId: string) => {
@@ -81,7 +81,7 @@ export default function DiscussionModule({ courseId }: { courseId: string }) {
       await discussionApi.remove(courseId, commentId);
       await load();
       toast.success("评论已删除");
-    } catch (requestError: any) { toast.error(requestError.response?.data?.detail || "删除评论失败"); }
+    } catch (requestError: unknown) { toast.error(getApiErrorMessage(requestError, "删除评论失败")); }
   };
 
   const canDelete = (comment: DiscussionComment) => user?.id === comment.author.id || user?.role === "teacher" || user?.role === "admin";

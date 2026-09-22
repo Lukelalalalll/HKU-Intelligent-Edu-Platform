@@ -25,6 +25,8 @@ export const queryKeys = {
   course: (id: string) => ["courses", id] as const,
   materials: (courseId: string, kind: string) => ["materials", courseId, kind] as const,
   assignments: (courseId: string) => ["assignments", courseId] as const,
+  liveClass: (courseId: string) => ["courses", courseId, "live-class"] as const,
+  participants: (courseId: string) => ["courses", courseId, "participants"] as const,
   videoProjects: ["video-projects"] as const,
   videoProject: (id: string) => ["video-projects", id] as const,
   videoJobs: (id: string) => ["video-projects", id, "jobs"] as const,

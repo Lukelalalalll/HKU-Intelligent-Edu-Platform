@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams, useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { liveClassApi, type LiveClassAuthorization } from "../../../api";
+import { getApiErrorMessage, liveClassApi, type LiveClassAuthorization } from "../../../api";
 import { useAuth } from "../../../store";
 
 export default function LiveClassRoute() {
@@ -17,7 +17,9 @@ export default function LiveClassRoute() {
   useEffect(() => {
     if (!courseId) return;
     const action = params.get("action") === "start" && (user?.role === "teacher" || user?.role === "admin") ? "start" : "join";
-    liveClassApi.authorize(courseId, action, params.get("meetingId") || undefined).then((response) => setAuth(response.data)).catch((err) => setError(err.response?.data?.detail || "无法进入 Zoom 课堂"));
+    const controller = new AbortController();
+    liveClassApi.authorize(courseId, action, params.get("meetingId") || undefined, { signal: controller.signal }).then((response) => setAuth(response.data)).catch((err: unknown) => { if (!controller.signal.aborted) setError(getApiErrorMessage(err, "无法进入 Zoom 课堂")); });
+    return () => controller.abort();
   }, [courseId, params, user?.role]);
 
   useEffect(() => {

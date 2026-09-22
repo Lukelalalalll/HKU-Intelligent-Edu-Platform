@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { profileApi, User } from "../../../api";
+import { getApiErrorMessage, profileApi, User } from "../../../api";
 import { useAuth } from "../../../store";
 import styles from "../styles/ProfileRoute.module.css";
 
@@ -35,14 +35,13 @@ export default function ProfileRoute() {
   if (!user) return <div className="loading-screen">正在加载个人资料…</div>;
 
   const updateLocal = (next: User) => { setLocalUser(next); setUser(next); setName(next.name); setEmail(next.email); };
-  const errorMessage = (error: any, fallback: string) => error.response?.data?.detail || fallback;
 
   const saveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!name.trim()) { toast.error("姓名不能为空"); return; }
     setSaving(true);
     try { const { data } = await profileApi.update({ name: name.trim(), email: email.trim() }); updateLocal(data); toast.success("个人资料已更新"); }
-    catch (error: any) { toast.error(errorMessage(error, "资料更新失败，请稍后重试")); }
+    catch (error: unknown) { toast.error(getApiErrorMessage(error, "资料更新失败，请稍后重试")); }
     finally { setSaving(false); }
   };
 
@@ -52,14 +51,14 @@ export default function ProfileRoute() {
     if (!file) return;
     setAvatarSaving(true);
     try { const { data } = await profileApi.uploadAvatar(file); updateLocal(data); setAvatarVersion((value) => value + 1); toast.success("头像已更新"); }
-    catch (error: any) { toast.error(errorMessage(error, "头像上传失败，请确认格式和大小")); }
+    catch (error: unknown) { toast.error(getApiErrorMessage(error, "头像上传失败，请确认格式和大小")); }
     finally { setAvatarSaving(false); }
   };
 
   const removeAvatar = async () => {
     setAvatarSaving(true);
     try { const { data } = await profileApi.removeAvatar(); updateLocal(data); setAvatarVersion((value) => value + 1); toast.success("头像已移除"); }
-    catch (error: any) { toast.error(errorMessage(error, "头像移除失败，请稍后重试")); }
+    catch (error: unknown) { toast.error(getApiErrorMessage(error, "头像移除失败，请稍后重试")); }
     finally { setAvatarSaving(false); }
   };
 
@@ -69,7 +68,7 @@ export default function ProfileRoute() {
     if (newPassword !== confirmPassword) { toast.error("两次新密码不一致"); return; }
     setPasswordSaving(true);
     try { await profileApi.changePassword({ current_password: currentPassword, new_password: newPassword }); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); toast.success("密码已更新"); }
-    catch (error: any) { toast.error(errorMessage(error, "密码更新失败，请检查当前密码")); }
+    catch (error: unknown) { toast.error(getApiErrorMessage(error, "密码更新失败，请检查当前密码")); }
     finally { setPasswordSaving(false); }
   };
 
