@@ -18,6 +18,10 @@ _TASKS = {
     "ppt_generation": "run_ppt_generation",
     "ppt_visual_research": "run_ppt_visual_research",
     "ppt_export": "run_ppt_export",
+    "video_generation": "run_video_generation",
+    "video_render": "run_video_render",
+    "video_cleanup": "run_video_cleanup",
+    "video_provider_poll": "run_video_provider_poll",
 }
 
 
@@ -75,6 +79,20 @@ def stage_and_publish(db, kind: str, args: tuple[Any, ...], task_id: str) -> str
     # unit tests.  Do not open a second database connection in that mode: test
     # sessions are often SQLite dependency overrides.
     if celery_app is None:
+        # Video jobs still get a durable outbox row in the local fallback so
+        # a process restart can recover them just like Celery-backed jobs.
+        if kind.startswith("video_"):
+            from app.models import TaskOutbox
+            stage_task(db, kind, args, task_id)
+            db.commit()
+            result = dispatch(kind, *args, task_id=task_id)
+            row = db.get(TaskOutbox, task_id)
+            if row and result:
+                row.status = "published"
+                row.attempts = (row.attempts or 0) + 1
+                row.published_at = datetime.now(timezone.utc)
+                db.commit()
+            return result
         return dispatch(kind, *args, task_id=task_id)
     stage_task(db, kind, args, task_id)
     db.commit()

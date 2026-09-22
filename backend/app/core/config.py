@@ -67,6 +67,26 @@ class Settings(BaseSettings):
     task_queue_eager: bool = False
     task_max_retries: int = 3
     task_retry_backoff_seconds: int = 5
+    # AI teaching video providers. Secrets are server-only settings.
+    coze_api_base_url: str = "https://api.coze.cn"
+    coze_api_token: str = ""
+    coze_workflow_id: str = ""
+    coze_bot_id: str = ""
+    coze_timeout_seconds: int = 120
+    coze_poll_interval_seconds: float = 2.0
+    coze_webhook_secret: str = ""
+    coze_enabled: bool = False
+    video_storage_dir: str = "backend/video_storage"
+    local_video_enabled: bool = True
+    local_video_model_dir: str = ""
+    local_video_max_concurrency: int = 1
+    local_video_width: int = 1280
+    local_video_height: int = 720
+    local_video_fps: int = 24
+    local_video_steps: int = 20
+    local_video_tts_command: str = ""
+    local_video_tts_voice: str = ""
+    local_video_tts_timeout_seconds: int = 120
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), extra="ignore")
 
@@ -100,6 +120,12 @@ class Settings(BaseSettings):
     @property
     def file_processing_path(self) -> Path:
         path = self._data_path(self.file_processing_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def video_storage_path(self) -> Path:
+        path = self._data_path(self.video_storage_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { useAuth } from '../../../store';
-import { api, type Course } from '../../../api';
+import { useCoursesQuery } from '../../../hooks/useCourseQueries';
 import SemesterSidebar from '../components/SemesterSidebar';
 import CourseGrid from '../components/CourseGrid';
 import {
@@ -15,17 +15,14 @@ import styles from '../styles/CoursesRoute.module.css';
 
 export default function CoursesRoute() {
   const { user } = useAuth();
-  const [courses, setCourses] = React.useState<Course[]>([]);
+  const coursesQuery = useCoursesQuery();
+  const courses = coursesQuery.data ?? [];
   const [currentDate, setCurrentDate] = React.useState(() => new Date());
   const [selectedYear, setSelectedYear] = React.useState(() => academicYearStartFor(new Date()));
   const [selectedSemester, setSelectedSemester] = React.useState<CourseSemester>(() => semesterFor(new Date()));
   const [query, setQuery] = React.useState('');
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
-
-  useEffect(() => {
-    api.get<Course[]>('/courses').then((response) => setCourses(response.data)).catch(() => setError(true)).finally(() => setLoading(false));
-  }, []);
+  const loading = coursesQuery.isLoading;
+  const error = coursesQuery.isError;
 
   useEffect(() => {
     const tomorrow = new Date(currentDate);

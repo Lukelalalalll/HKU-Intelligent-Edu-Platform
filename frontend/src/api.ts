@@ -1,28 +1,7 @@
-import axios from "axios";
-
-export const DEV_SESSION_STORAGE_KEY = "hku-dev-access-token";
+export { api, getDevAccessToken, setDevAccessToken, DEV_SESSION_STORAGE_KEY } from "./lib/apiClient";
+export type { ApiError } from "./lib/apiClient";
+import { api, getDevAccessToken } from "./lib/apiClient";
 const isDevelopment = import.meta.env.DEV;
-
-export function getDevAccessToken(): string | null {
-  if (!isDevelopment || typeof window === "undefined") return null;
-  return window.sessionStorage.getItem(DEV_SESSION_STORAGE_KEY);
-}
-
-export function setDevAccessToken(token: string | null): void {
-  if (!isDevelopment || typeof window === "undefined") return;
-  if (token) window.sessionStorage.setItem(DEV_SESSION_STORAGE_KEY, token);
-  else window.sessionStorage.removeItem(DEV_SESSION_STORAGE_KEY);
-}
-
-export const api = axios.create({ baseURL: "/api", withCredentials: true });
-api.interceptors.request.use((config) => {
-  if (isDevelopment) {
-    config.headers.set("X-HKU-Session-Mode", "isolated");
-    const token = getDevAccessToken();
-    if (token) config.headers.set("Authorization", `Bearer ${token}`);
-  }
-  return config;
-});
 export type Role = "teacher" | "student" | "admin";
 export const SUPPORTED_ROLES: Role[] = ["teacher", "student", "admin"];
 export type User = { id: string; username: string; email: string; name: string; avatar_url: string | null; role: Role };
@@ -57,7 +36,7 @@ export const fileAssetsApi = {
   copyPpt: (id: string) => api.post<FileAsset>(`/ppt/exports/${id}/copy`),
 };
 export const assignmentsApi = {
-  list: (courseId: string) => api.get<Assignment[]>(`/courses/${courseId}/assignments`),
+  list: (courseId: string, config?: import("axios").AxiosRequestConfig) => api.get<Assignment[]>(`/courses/${courseId}/assignments`, config),
   create: (courseId: string, payload: { title: string; description: string; due_at: string | null; max_score: number; file_asset_ids: string[] }) => api.post<Assignment>(`/courses/${courseId}/assignments`, payload),
   attach: (courseId: string, id: string, assetId: string) => api.post(`/courses/${courseId}/assignments/${id}/attachments`, null, { params: { file_asset_id: assetId } }),
   removeAttachment: (courseId: string, id: string, attachmentId: string) => api.delete(`/courses/${courseId}/assignments/${id}/attachments/${attachmentId}`),
@@ -139,6 +118,40 @@ export type AiProvider = { id: string; name: string; provider_type: "openai" | "
 export type AiBusiness = { business_code: string; role: Role; display_name: string; description: string; provider_id: string | null; provider_name: string | null; model: string; embedding_model: string; timeout_seconds: number | null; is_enabled: boolean };
 export type PptChatTrace = { kind?: string; round?: number; tool?: string; status?: string; message?: string; slideIndex?: number };
 export type PptChatStreamEvent = { type: "status" | "trace" | "chunk" | "complete" | "error"; status?: string; trace?: PptChatTrace; chunk?: string; detail?: string; chat?: { response?: string; tool_calls?: string[]; message_id?: string }; requirement?: RequirementChatResponse };
+export type VideoProject = { id: string; owner_id: string; course_id: string | null; title: string; description: string; provider: "coze" | "local"; status: string; language: string; duration_seconds: number; style: string; input_text: string; config_json: Record<string, any>; created_at: string; updated_at: string };
+export type VideoSource = { id: string; project_id: string; file_asset_id: string | null; source_type: string; title: string; extracted_text: string; metadata_json: Record<string, any>; created_at: string };
+export type VideoScene = { id: string; project_id: string; order_index: number; title: string; narration: string; onscreen_text: string; visual_prompt: string; duration_seconds: number; status: string; metadata_json: Record<string, any> };
+export type VideoGenerationJob = { id: string; project_id: string; owner_id: string; provider: string; provider_job_id: string | null; status: string; stage: string; progress: number; current_scene: number; total_scenes: number; result_json: Record<string, any>; error_message: string | null; idempotency_key: string; created_at: string; started_at: string | null; completed_at: string | null };
+export type VideoAsset = { id: string; project_id: string; job_id: string; asset_type: string; storage_key: string; public_url: string | null; mime_type: string; size_bytes: number; metadata_json: Record<string, any>; created_at: string };
+export type VideoSseEvent = { type: "status" | "error"; job_id: string; status?: string; stage?: string; progress?: number; current_scene?: number; total_scenes?: number; detail?: string };
+export type VideoProjectCreatePayload = { title: string; course_id?: string; description?: string; input_text?: string; learning_objectives?: string[]; audience?: string; language?: string; duration_seconds?: number; style?: string; voice_enabled?: boolean; captions_enabled?: boolean; avatar_enabled?: boolean; provider?: "coze" | "local" };
+export const teacherVideoApi = {
+  listProjects: () => api.get<VideoProject[]>("/teacher/video-projects"),
+  createProject: (payload: VideoProjectCreatePayload) => api.post<VideoProject>("/teacher/video-projects", payload),
+  getProject: (id: string, config?: import("axios").AxiosRequestConfig) => api.get<VideoProject>(`/teacher/video-projects/${id}`, config),
+  patchProject: (id: string, payload: Record<string, unknown>) => api.patch<VideoProject>(`/teacher/video-projects/${id}`, payload),
+  deleteProject: (id: string) => api.delete(`/teacher/video-projects/${id}`),
+  addSource: (id: string, payload: { file_asset_id?: string; source_type?: string; title?: string; extracted_text?: string }) => api.post<VideoSource>(`/teacher/video-projects/${id}/sources`, payload),
+  generate: (id: string, idempotency_key?: string) => api.post<VideoGenerationJob>(`/teacher/video-projects/${id}/generate`, { idempotency_key }),
+  jobs: (id: string, config?: import("axios").AxiosRequestConfig) => api.get<VideoGenerationJob[]>(`/teacher/video-projects/${id}/jobs`, config),
+  job: (id: string, jobId: string) => api.get<VideoGenerationJob>(`/teacher/video-projects/${id}/jobs/${jobId}`),
+  cancelJob: (id: string, jobId: string) => api.post<VideoGenerationJob>(`/teacher/video-projects/${id}/jobs/${jobId}/cancel`),
+  retryJob: (id: string, jobId: string) => api.post<VideoGenerationJob>(`/teacher/video-projects/${id}/jobs/${jobId}/retry`),
+  scenes: (id: string, config?: import("axios").AxiosRequestConfig) => api.get<VideoScene[]>(`/teacher/video-projects/${id}/scenes`, config),
+  patchScene: (id: string, sceneId: string, payload: Record<string, unknown>) => api.patch<VideoScene>(`/teacher/video-projects/${id}/scenes/${sceneId}`, payload),
+  streamEvents: async (id: string, onEvent: (event: VideoSseEvent) => void, signal?: AbortSignal) => {
+    const headers: Record<string, string> = { Accept: "text/event-stream" };
+    if (isDevelopment) { headers["X-HKU-Session-Mode"] = "isolated"; const token = getDevAccessToken(); if (token) headers.Authorization = `Bearer ${token}`; }
+    const response = await fetch(`/api/teacher/video-projects/${id}/events/stream`, { headers, credentials: "include", signal });
+    if (!response.ok || !response.body) throw new Error((await response.text()) || "视频进度连接失败");
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = "";
+    const consume = (frame: string) => { const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n"); if (!data) return; try { onEvent(JSON.parse(data) as VideoSseEvent); } catch { /* ignore malformed frame */ } };
+    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); let split = buffer.indexOf("\n\n"); while (split >= 0) { consume(buffer.slice(0, split)); buffer = buffer.slice(split + 2); split = buffer.indexOf("\n\n"); } }
+    if (buffer.trim()) consume(buffer);
+  },
+  downloadAsset: (id: string, assetId: string) => api.get<Blob>(`/teacher/video-projects/${id}/assets/${assetId}/download`, { responseType: "blob" }),
+  assets: (id: string) => api.get<VideoAsset[]>(`/teacher/video-projects/${id}/assets`),
+};
 export const profileApi = {
   get: () => api.get<User>("/profile"),
   update: (payload: ProfileUpdate) => api.patch<User>("/profile", payload),
@@ -170,7 +183,7 @@ export const discussionApi = {
 };
 export const courseMaterialsApi = {
   attach: (courseId: string, payload: { file_asset_id: string; kind: MaterialKind; chapter_id?: string; chapter_title?: string; title?: string }) => api.post<CourseMaterial>(`/courses/${courseId}/materials/assets`, null, { params: payload }),
-  list: (courseId: string, kind: MaterialKind) => api.get<CourseChapter[]>(`/courses/${courseId}/materials`, { params: { kind } }),
+  list: (courseId: string, kind: MaterialKind, config?: import("axios").AxiosRequestConfig) => api.get<CourseChapter[]>(`/courses/${courseId}/materials`, { ...config, params: { kind } }),
   createChapter: (courseId: string, payload: { kind: MaterialKind; title: string }) => api.post<CourseChapter>(`/courses/${courseId}/materials/chapters`, payload),
   updateChapter: (courseId: string, chapterId: string, payload: { title?: string; sort_order?: number }) => api.patch<CourseChapter>(`/courses/${courseId}/materials/chapters/${chapterId}`, payload),
   deleteChapter: (courseId: string, chapterId: string) => api.delete(`/courses/${courseId}/materials/chapters/${chapterId}`),

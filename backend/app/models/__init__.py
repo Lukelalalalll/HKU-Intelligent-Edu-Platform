@@ -29,6 +29,7 @@ from app.models.lesson_plan import LessonPlanProject, LessonPlanPage, LessonPlan
 from app.models.ai import AiProvider, AiBusinessBinding
 from app.models.file_processing import FileProcessingDocument, FileProcessingJob, FileProcessingPage, FileProcessingChunk, FileContextBinding, AgentMessageAttachment, SubmissionAttachment
 from app.models.jobs import TaskOutbox
+from app.models.video import VideoProject, VideoSource, VideoScene, VideoGenerationJob, VideoAsset
 
 __all__ = [
     "User", "UserRole", "Course", "Enrollment", "CourseSchedule", "Assignment", "AssignmentAttachment", "Submission",
@@ -41,5 +42,5 @@ __all__ = [
     "AiProvider", "AiBusinessBinding",
     "FileProcessingDocument", "FileProcessingJob", "FileProcessingPage", "FileProcessingChunk", "FileContextBinding", "AgentMessageAttachment", "SubmissionAttachment",
     "TaskOutbox",
+    "VideoProject", "VideoSource", "VideoScene", "VideoGenerationJob", "VideoAsset",
 ]
-

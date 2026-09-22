@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.103.2",
     "@zoom/meetingsdk": "^6.2.0",
     "axios": "^1.7.9",
     "fabric": "^5.3.0",

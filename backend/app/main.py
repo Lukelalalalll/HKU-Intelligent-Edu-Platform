@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.session import Base, engine
 from app.db.session import SessionLocal
-from app.api.routes import agent, assignments, auth, courses, files, file_processing, teacher, student, ppt, profile, live_class, courseware_agent, lesson_plan, admin_ai
+from app.api.routes import agent, assignments, auth, courses, files, file_processing, teacher, student, ppt, profile, live_class, courseware_agent, lesson_plan, admin_ai, teacher_video
 from app.models import *  # noqa: F401,F403
 from app.services.ai_gateway import ensure_ai_defaults
 from app.services.file_processing import recover_jobs
@@ -28,6 +28,8 @@ async def lifespan(app: FastAPI):
             project = db.get(PptProject, job.project_id)
             if project:
                 dispatch("ppt_generation", job.id, project.id, project.owner_id, task_id=f"ppt-generation:{job.id}")
+        for job in db.scalars(select(VideoGenerationJob).where(VideoGenerationJob.status.in_(["queued", "preparing", "rendering"]))):
+            dispatch("video_generation", job.id, task_id=f"video-generation:{job.id}")
     finally:
         db.close()
     yield
@@ -49,6 +51,8 @@ app.include_router(live_class.webhook_router)
 app.include_router(courseware_agent.router)
 app.include_router(lesson_plan.router)
 app.include_router(admin_ai.router)
+app.include_router(teacher_video.router)
+app.include_router(teacher_video.webhook_router)
 
 @app.get("/healthz")
 def healthz():
