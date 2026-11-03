@@ -1,11 +1,23 @@
 import { useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 
+/**
+ * Task states shared by every polling surface.
+ */
 export const TERMINAL_TASK_STATUSES = ["completed", "completed_with_errors", "failed", "cancelled"] as const;
 
+/**
+ * Return whether a task status is terminal.
+ */
 export function isTerminalTaskStatus(status?: string | null): boolean {
   return Boolean(status && (TERMINAL_TASK_STATUSES as readonly string[]).includes(status));
 }
 
+/**
+ * Poll a query until its status becomes terminal.
+ *
+ * ``getStatus`` extracts the status from the payload; without it the query
+ * keeps the fixed ``intervalMs`` cadence.
+ */
 export function useTaskPolling<T>(options: {
   queryKey: QueryKey;
   queryFn: (signal?: AbortSignal) => Promise<T>;

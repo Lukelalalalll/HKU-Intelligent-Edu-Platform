@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PptDocument, PptPage } from "../api";
 
+/**
+ * Debounced document save queued by the editor.
+ */
 export type PendingSave = { projectId: string; pageId: string; document: PptDocument; revision: number };
 
+/**
+ * Debounce editor saves and flush them on unmount.
+ *
+ * ``schedule`` keeps only the newest document; ``flush`` resolves after the
+ * in-flight save so callers can await persistence.
+ */
 export function usePptAutosave(options: {
   projectId?: string;
   save: (pending: PendingSave) => Promise<PptPage>;

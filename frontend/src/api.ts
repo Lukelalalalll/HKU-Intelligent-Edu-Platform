@@ -1,7 +1,20 @@
+/**
+ * Single HTTP surface for the frontend.
+ *
+ * Endpoint objects mirror the FastAPI routers; functions resolve with the axios
+ * response and reject with ``ApiError``.  The exported types mirror the backend
+ * schemas and are the contract components rely on.
+ */
 export { api, getDevAccessToken, setDevAccessToken, DEV_SESSION_STORAGE_KEY, consumeSse, createStreamHeaders, getApiErrorMessage, isApiError } from "./lib/apiClient";
 export type { ApiError, SseEvent } from "./lib/apiClient";
 import { api, consumeSse, createStreamHeaders } from "./lib/apiClient";
+/**
+ * Roles understood by routing guards and API payloads.
+ */
 export type Role = "teacher" | "student" | "admin";
+/**
+ * Ordered role list used by account pickers.
+ */
 export const SUPPORTED_ROLES: Role[] = ["teacher", "student", "admin"];
 export type User = { id: string; username: string; email: string; name: string; avatar_url: string | null; role: Role };
 export type ProfileUpdate = { name: string; email: string };
@@ -30,11 +43,17 @@ export type AssignmentAttachment = { id: string; file_asset_id: string; file_nam
 export type SubmissionAttachment = { id: string; file_asset_id: string; file_name: string; document_id?: string | null; job_id?: string | null; processing_status?: string };
 export type Assignment = { id: string; course_id: string; title: string; description: string; due_at: string | null; max_score: number; status: string; course_name?: string; pending_count?: number; attachments?: AssignmentAttachment[] };
 
+/**
+ * Uploaded assets and PPT export material helpers.
+ */
 export const fileAssetsApi = {
   upload: (file: File) => { const form = new FormData(); form.append("file", file); return api.post<FileAsset>("/files", form); },
   availablePpt: () => api.get<{ items: AvailablePptExport[] }>("/ppt/exports/available"),
   copyPpt: (id: string) => api.post<FileAsset>(`/ppt/exports/${id}/copy`),
 };
+/**
+ * Assignment, attachment and submission endpoints.
+ */
 export const assignmentsApi = {
   list: (courseId: string, config?: import("axios").AxiosRequestConfig) => api.get<Assignment[]>(`/courses/${courseId}/assignments`, config),
   create: (courseId: string, payload: { title: string; description: string; due_at: string | null; max_score: number; file_asset_ids: string[] }) => api.post<Assignment>(`/courses/${courseId}/assignments`, payload),
@@ -50,10 +69,19 @@ export type StudentDashboardData = { timezone: string; courses: Course[]; schedu
 export type AgentMessage = { id: string; conversation_id: string; role: "user" | "assistant"; content: string; citations: unknown[] | Record<string, unknown>; model: string | null; created_at: string };
 export type AgentConversation = { id: string; title: string; rag_mode: string; created_at: string; messages?: AgentMessage[] };
 
+/**
+ * Project summary; ``current_stage`` is the pipeline stage.
+ */
 export type PptProject = { id: string; title: string; request_text: string; course_id?: string | null; current_stage: "init" | "outline" | "visual" | "theme" | "layout" | "design" | "export"; status?: string; active_page_id?: string | null; latest_checkpoint_code?: string | null; page_count_target: number | null; theme_id?: string | null; theme_config?: Record<string, any>; layout_assignments?: Record<string, string>; design_status?: "pending" | "running" | "ready" | "failed" | string; page_count: number; cover_preview_url?: string | null; created_at: string; updated_at: string };
 export type PptTheme = { id: string; name: string; description: string; family: string; colors: Record<string, string>; tokens?: Record<string, any>; accessibility?: Record<string, any>; layout_recipes?: Record<string, any>; layout_count?: number };
 export type PptLayout = { id: string; name: string; kind: string };
 export type PptElementType = "title" | "body" | "image" | "shape" | "icon" | string;
+/**
+ * One absolutely positioned canvas element.
+ *
+ * ``x``/``y``/``w``/``h`` are percentages of the 1280x720 logical canvas and
+ * the renderer scales them to the viewport.
+ */
 export type PptSlideElement = {
   id: string;
   type?: PptElementType;
@@ -100,14 +128,35 @@ export type PptSlideElement = {
   lock_aspect_ratio?: boolean;
   shadow?: string;
 };
+/**
+ * Styled range inside one element text.
+ */
 export type PptTextRun = { start: number; end: number; font_family?: string; font_size?: number; font_weight?: number | string; italic?: boolean; underline?: boolean; strike?: boolean; color?: string; highlight?: string };
+/**
+ * Paragraph-level layout options of a text element.
+ */
 export type PptParagraphStyle = { align?: "left" | "center" | "right" | "justify"; line_height?: number; letter_spacing?: number; bullet?: boolean; numbering?: boolean; indent?: number; vertical_align?: "top" | "center" | "bottom" };
+/**
+ * Logical canvas size shared by the editor, preview and exporter.
+ */
 export type PptCanvasSpec = { width: 1280; height: 720 };
+/**
+ * Canvas document of one slide.
+ *
+ * ``version`` is 2 for generated documents and 3 for editor documents; both
+ * use the 1280x720 canvas contract.
+ */
 export type PptDocument = { version?: 2 | 3; canvas?: PptCanvasSpec; layout?: string; theme?: Record<string, any>; elements: PptSlideElement[]; speaker_notes?: string; guides?: { orientation: "horizontal" | "vertical"; position: number }[] };
 export type PptPagePatch = { title: string; bullets: string[]; section_title?: string; speaker_notes?: string };
 export type PptVisualAsset = { id: string; title?: string; src?: string; public_url?: string; asset_path?: string; source_url?: string; alt?: string; score?: number; license?: string; status?: string; error?: string };
 export type PptImageSlot = { slot_id: string; asset_id: string; src?: string; asset_path?: string; placement_hint?: string; x: number; y: number; w: number; h: number; confidence?: number; object_fit?: "cover" | "contain" };
+/**
+ * Page payload of the studio; ``document_revision`` drives autosave.
+ */
 export type PptPage = { id: string; project_id: string; section_title: string; sort_order: number; title: string; bullets: string[]; statuses: Record<string, string>; search_queries: { query_text: string; query_purpose?: string }[]; summary_md: string; citations: any[]; document: PptDocument | null; document_revision?: number; current_document_version_id?: string | null; speaker_notes: string; page_role?: string; content_plan?: Record<string, any>; visual_plan?: Record<string, any>; asset_manifest?: PptVisualAsset[]; image_slots?: PptImageSlot[]; selected_asset_ids?: string[]; preview_url?: string | null; layout_id?: string | null };
+/**
+ * Generation job status polled by the studio.
+ */
 export type PptGenerationJob = { id: string; project_id: string; status: string; stage: string; total_pages: number; completed_pages: number; failed_pages: number; current_page_id?: string | null; error_message?: string | null };
 export type PptMessage = { id: string; role: "user" | "assistant"; stage: string; scope_type: string; page_id?: string | null; content_md: string; payload?: Record<string, any>; created_at: string };
 export type PptRequirement = { project_id: string; status: string; page_count_target: number | null; answers: Record<string, any>; questions: { code?: string; label: string; options?: string[] }[]; page_count_options: any[]; ready_to_outline?: boolean; suggested_additions?: string[]; brief_summary?: string };
@@ -117,14 +166,23 @@ export type PptProviderConfig = { base_url: string; api_key_configured: boolean;
 export type AiProvider = { id: string; name: string; provider_type: "openai" | "deepseek"; base_url: string; api_key_configured: boolean; api_key_masked: string; default_model: string; timeout_seconds: number; capabilities: Record<string, boolean>; is_enabled: boolean };
 export type AiBusiness = { business_code: string; role: Role; display_name: string; description: string; provider_id: string | null; provider_name: string | null; model: string; embedding_model: string; timeout_seconds: number | null; is_enabled: boolean };
 export type PptChatTrace = { kind?: string; round?: number; tool?: string; status?: string; message?: string; slideIndex?: number };
+/**
+ * Events streamed by the requirement and workspace assistants.
+ */
 export type PptChatStreamEvent = { type: "status" | "trace" | "chunk" | "complete" | "error"; status?: string; trace?: PptChatTrace; chunk?: string; detail?: string; chat?: { response?: string; tool_calls?: string[]; message_id?: string }; requirement?: RequirementChatResponse };
 export type VideoProject = { id: string; owner_id: string; course_id: string | null; title: string; description: string; provider: "coze" | "local"; status: string; language: string; duration_seconds: number; style: string; input_text: string; config_json: Record<string, any>; created_at: string; updated_at: string };
 export type VideoSource = { id: string; project_id: string; file_asset_id: string | null; source_type: string; title: string; extracted_text: string; metadata_json: Record<string, any>; created_at: string };
 export type VideoScene = { id: string; project_id: string; order_index: number; title: string; narration: string; onscreen_text: string; visual_prompt: string; duration_seconds: number; status: string; metadata_json: Record<string, any> };
 export type VideoGenerationJob = { id: string; project_id: string; owner_id: string; provider: string; provider_job_id: string | null; status: string; stage: string; progress: number; current_scene: number; total_scenes: number; result_json: Record<string, any>; error_message: string | null; idempotency_key: string; created_at: string; started_at: string | null; completed_at: string | null };
 export type VideoAsset = { id: string; project_id: string; job_id: string; asset_type: string; storage_key: string; public_url: string | null; mime_type: string; size_bytes: number; metadata_json: Record<string, any>; created_at: string };
+/**
+ * Job events streamed by the teacher video page.
+ */
 export type VideoSseEvent = { type: "status" | "error"; job_id: string; status?: string; stage?: string; progress?: number; current_scene?: number; total_scenes?: number; detail?: string };
 export type VideoProjectCreatePayload = { title: string; course_id?: string; description?: string; input_text?: string; learning_objectives?: string[]; audience?: string; language?: string; duration_seconds?: number; style?: string; voice_enabled?: boolean; captions_enabled?: boolean; avatar_enabled?: boolean; provider?: "coze" | "local" };
+/**
+ * Teacher video project, job and asset endpoints.
+ */
 export const teacherVideoApi = {
   listProjects: (config?: import("axios").AxiosRequestConfig) => api.get<VideoProject[]>("/teacher/video-projects", config),
   createProject: (payload: VideoProjectCreatePayload) => api.post<VideoProject>("/teacher/video-projects", payload),
@@ -146,6 +204,9 @@ export const teacherVideoApi = {
   downloadAsset: (id: string, assetId: string) => api.get<Blob>(`/teacher/video-projects/${id}/assets/${assetId}/download`, { responseType: "blob" }),
   assets: (id: string) => api.get<VideoAsset[]>(`/teacher/video-projects/${id}/assets`),
 };
+/**
+ * Profile, avatar and password endpoints.
+ */
 export const profileApi = {
   get: () => api.get<User>("/profile"),
   update: (payload: ProfileUpdate) => api.patch<User>("/profile", payload),
@@ -153,20 +214,32 @@ export const profileApi = {
   removeAvatar: () => api.delete<User>("/profile/avatar"),
   changePassword: (payload: PasswordChange) => api.put("/profile/password", payload),
 };
+/**
+ * Zoom live-class state, provisioning and authorization endpoints.
+ */
 export const liveClassApi = {
   get: (courseId: string, config?: import("axios").AxiosRequestConfig) => api.get<LiveClass>(`/courses/${courseId}/live-class`, config),
   provision: (courseId: string) => api.post<LiveClass>(`/courses/${courseId}/live-class/provision`),
   authorize: (courseId: string, action: "start" | "join", meetingId?: string, config?: import("axios").AxiosRequestConfig) => api.post<LiveClassAuthorization>(`/courses/${courseId}/live-class/authorize`, { action, meeting_id: meetingId }, config),
 };
+/**
+ * Course participant listing.
+ */
 export const participantApi = {
   list: (courseId: string, config?: import("axios").AxiosRequestConfig) => api.get<Participant[]>(`/courses/${courseId}/participants`, config),
 };
+/**
+ * Upload plus document and job polling endpoints.
+ */
 export const fileApi = {
   upload: (file: File) => { const form = new FormData(); form.append("file", file); return api.post<UploadedFile>("/files", form); },
   document: (id: string) => api.get<ProcessingDocument>(`/file-processing/documents/${id}`),
   job: (id: string) => api.get<ProcessingJob>(`/file-processing/jobs/${id}`),
   retry: (id: string) => api.post<ProcessingJob>(`/file-processing/jobs/${id}:retry`),
 };
+/**
+ * Course discussion thread and like endpoints.
+ */
 export const discussionApi = {
   list: (courseId: string) => api.get<DiscussionComment[]>(`/courses/${courseId}/discussion`),
   create: (courseId: string, content: string) => api.post<DiscussionComment>(`/courses/${courseId}/discussion`, { content }),
@@ -175,6 +248,9 @@ export const discussionApi = {
   unlike: (courseId: string, commentId: string) => api.delete<DiscussionLikeResult>(`/courses/${courseId}/discussion/${commentId}/like`),
   remove: (courseId: string, commentId: string) => api.delete(`/courses/${courseId}/discussion/${commentId}`),
 };
+/**
+ * Chapter, material upload and download endpoints.
+ */
 export const courseMaterialsApi = {
   attach: (courseId: string, payload: { file_asset_id: string; kind: MaterialKind; chapter_id?: string; chapter_title?: string; title?: string }) => api.post<CourseMaterial>(`/courses/${courseId}/materials/assets`, null, { params: payload }),
   list: (courseId: string, kind: MaterialKind, config?: import("axios").AxiosRequestConfig) => api.get<CourseChapter[]>(`/courses/${courseId}/materials`, { ...config, params: { kind } }),
@@ -185,6 +261,9 @@ export const courseMaterialsApi = {
   delete: (courseId: string, materialId: string) => api.delete(`/courses/${courseId}/materials/${materialId}`),
   download: (courseId: string, materialId: string) => api.get<Blob>(`/courses/${courseId}/materials/${materialId}/download`, { responseType: "blob" }),
 };
+/**
+ * Student dashboard and courseware agent endpoints.
+ */
 export const studentApi = {
   dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),
   coursewareQuery: (payload: { question: string; course_id?: string; conversation_id?: string; attachment_ids?: string[] }) => api.post<CoursewareQuery>("/courseware-agent/query", payload),
@@ -195,6 +274,9 @@ export const studentApi = {
   appendCoursewareMessage: (id: string, payload: { role: "user" | "assistant"; content: string; citations?: unknown[]; model?: string | null; attachment_ids?: string[] }) => api.post(`/courseware-agent/conversations/${id}/messages`, payload),
   uploadConversationAttachment: (id: string, file: File) => { const form = new FormData(); form.append("file", file); return api.post<UploadedFile>(`/courseware-agent/conversations/${id}/attachments`, form); },
 };
+/**
+ * PPT studio endpoints: requirements, outline, pages and exports.
+ */
 export const pptApi = {
   projects: () => api.get<{ items: PptProject[] }>("/ppt/projects"),
   preview: (url: string) => api.get<Blob>(url.replace(/^\/api/, ""), { responseType: "blob" }),
@@ -251,7 +333,13 @@ export const pptApi = {
   patchStoryboard: (id: string, pageIds: string[]) => api.patch<{ items: PptPage[] }>(`/ppt/projects/${id}/storyboard`, { page_ids: pageIds }),
   downloadExport: (id: string, exportId: string) => api.get<Blob>(`/ppt/projects/${id}/exports/${exportId}/download`, { responseType: "blob" }),
 };
+/**
+ * Editor image asset serialized by the PPT router.
+ */
 export type PptEditorAsset = { id: string; url: string; name: string; mime: string; width: number; height: number; size_bytes: number; sha256: string; alt?: string; source_url?: string; license?: string };
+/**
+ * Admin AI provider and business binding endpoints.
+ */
 export const adminAiApi = {
   providers: () => api.get<{ items: AiProvider[] }>("/admin/ai/providers"),
   createProvider: (payload: Record<string, unknown>) => api.post<AiProvider>("/admin/ai/providers", payload),

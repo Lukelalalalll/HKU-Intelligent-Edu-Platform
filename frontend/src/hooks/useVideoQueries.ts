@@ -2,8 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, teacherVideoApi, type Course, type VideoGenerationJob } from "../api";
 import { queryKeys } from "../queryClient";
 
+/**
+ * Job states that stop background polling.
+ */
 const terminalStatuses = new Set(["completed", "completed_with_errors", "failed", "cancelled"]);
 
+/**
+ * Load one video project; disabled until an id is known.
+ */
 export function useVideoProjectQuery(id?: string) {
   return useQuery({
     queryKey: queryKeys.videoProject(id || ""),
@@ -12,6 +18,9 @@ export function useVideoProjectQuery(id?: string) {
   });
 }
 
+/**
+ * List the teacher's video projects.
+ */
 export function useVideoProjectsQuery() {
   return useQuery({
     queryKey: queryKeys.videoProjects,
@@ -19,6 +28,9 @@ export function useVideoProjectsQuery() {
   });
 }
 
+/**
+ * List courses available when creating a video project.
+ */
 export function useCoursesForVideoQuery() {
   return useQuery({
     queryKey: queryKeys.courses,
@@ -26,6 +38,9 @@ export function useCoursesForVideoQuery() {
   });
 }
 
+/**
+ * Load the scenes of one video project.
+ */
 export function useVideoScenesQuery(id?: string) {
   return useQuery({
     queryKey: [...queryKeys.videoProject(id || ""), "scenes"],
@@ -34,6 +49,9 @@ export function useVideoScenesQuery(id?: string) {
   });
 }
 
+/**
+ * List project jobs and poll while any job is active.
+ */
 export function useVideoJobsQuery(id?: string) {
   return useQuery({
     queryKey: queryKeys.videoJobs(id || ""),
@@ -46,6 +64,9 @@ export function useVideoJobsQuery(id?: string) {
   });
 }
 
+/**
+ * Cancel and retry mutations for one job; both patch the cached list.
+ */
 export function useVideoJobActions(projectId: string, job?: VideoGenerationJob | null) {
   const client = useQueryClient();
   const update = (data: VideoGenerationJob) => {
@@ -56,6 +77,9 @@ export function useVideoJobActions(projectId: string, job?: VideoGenerationJob |
   return { cancel, retry };
 }
 
+/**
+ * Patch a video project and invalidate its detail query.
+ */
 export function useVideoProjectMutation() {
   const client = useQueryClient();
   return useMutation({

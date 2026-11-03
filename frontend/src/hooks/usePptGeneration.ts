@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pptApi, type PptGenerationJob } from "../api";
 
+/**
+ * Job states that stop the studio progress bar.
+ */
 const TERMINAL = new Set(["completed", "completed_with_errors", "failed", "cancelled"]);
 
+/**
+ * Drive deck generation progress from SSE plus polling.
+ *
+ * SSE events give instant progress; a 3s poll stays authoritative.  The
+ * returned ``cancel`` closes both channels and clears the job id.
+ */
 export function usePptGeneration(options: { projectId?: string; pageCount: number; onComplete?: () => void | Promise<void> }) {
   const { projectId, pageCount, onComplete } = options;
   const projectRef = useRef(projectId);

@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { api, profileApi, setDevAccessToken, User } from "./api";
 
+/**
+ * Auth store shape; ``loading`` stays true until the session probe runs.
+ */
 type AuthState = { user: User | null; loading: boolean; setUser: (user: User | null) => void; login: (username: string, password: string) => Promise<User>; logout: () => Promise<void>; bootstrap: () => Promise<void>; refreshProfile: () => Promise<User>; };
+/**
+ * Zustand auth store: session bootstrap, login, logout and profile refresh.
+ */
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   loading: true,

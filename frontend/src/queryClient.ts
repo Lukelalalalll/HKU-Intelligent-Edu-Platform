@@ -1,6 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import { toApiError } from "./lib/apiClient";
 
+/**
+ * Shared React Query client.
+ *
+ * Query retries follow ``ApiError.retryable``; mutations never retry.
+ * Window-focus refetch stays off so studio edits are not interrupted.
+ */
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -16,6 +22,9 @@ export const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Query key factory; keys are compared by value, so keep them stable.
+ */
 export const queryKeys = {
   dashboard: {
     teacher: ["dashboard", "teacher"] as const,
