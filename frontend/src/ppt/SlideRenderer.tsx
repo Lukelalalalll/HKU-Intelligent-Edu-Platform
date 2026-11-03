@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { PptDocument, PptPage, PptSlideElement } from "../api";
+import AuthedImage from "../shared/components/AuthedImage";
 import { translate, useI18n } from "../i18n";
 
 /**
@@ -69,6 +70,13 @@ export type SlideRendererProps = {
 const elementText = (element: PptSlideElement) => element.text || (element.items || []).join("\n");
 
 /**
+ * Keep the authored family but guarantee a CJK-capable fallback; themes can
+ * name Latin-only fonts and would otherwise render Chinese with odd metrics.
+ */
+const withCjkFallback = (family?: string | null): string =>
+  `${family || "Arial"}, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif`;
+
+/**
  * Render a slide document as positioned DOM elements.
  */
 export function SlideRenderer({
@@ -93,15 +101,20 @@ export function SlideRenderer({
         const isShape = shapeTypes.has(type) || (!elementText(element) && ["fill", "fill_color", "background", "background_color", "stroke", "stroke_color", "shape"].some((key) => raw[key] != null && raw[key] !== ""));
         const shapeHint = String(raw.shape || "").toLowerCase().replace("_", "-");
         const text = elementText(element);
+        const isText = !isImage && !isShape;
         const style: React.CSSProperties = {
           left: `${element.x}%`,
           top: `${element.y}%`,
           width: `${element.w}%`,
-          height: `${element.h}%`,
+          // Text boxes grow with their content (matching the Fabric editor);
+          // a fixed block height silently constrains CJK line boxes and breaks
+          // glyph rendering in presentation mode.
+          height: isText ? undefined : `${element.h}%`,
+          minHeight: isText ? `${element.h}%` : undefined,
           zIndex: element.zIndex || 1,
           color: element.color || "#173f32",
           fontSize: `${element.font_size || 18}px`,
-          fontFamily: element.font_family || "Arial, sans-serif",
+          fontFamily: withCjkFallback(element.font_family),
           fontWeight: element.font_weight || (type === "title" ? 800 : 500),
           textAlign: element.align || "left",
           opacity: element.opacity ?? 1,
@@ -110,11 +123,12 @@ export function SlideRenderer({
           border: raw.stroke || raw.stroke_color || raw.border_color ? `${raw.stroke_width || raw.line_width || 1}px solid ${raw.stroke || raw.stroke_color || raw.border_color}` : undefined,
           objectFit: element.object_fit || "cover",
         };
+        const textOverflow = isText ? { overflow: "visible" as const } : undefined;
         return (
           <div
             key={element.id}
             className={`ppt-slide-element ppt-slide-element-${type} ${selectedId === element.id ? "selected" : ""} ${isImage ? "is-image" : ""}`}
-            style={style}
+            style={textOverflow ? { ...style, ...textOverflow } : style}
             onClick={() => editable && onSelect?.(element)}
             onPointerDown={(event) => {
               if (!editable || element.locked) return;
@@ -128,7 +142,7 @@ export function SlideRenderer({
               if (editable && !isShape && !isImage) onTextBlur?.(element, event.currentTarget.textContent || "");
             }}
           >
-            {isImage && element.src ? <img src={element.src} alt={element.alt || t("courseware.slide.imageAlt")} draggable={false} /> : isImage ? <span className="ppt-slide-image-placeholder">{t("courseware.slide.imagePlaceholder")}</span> : isShape ? null : text}
+            {isImage && element.src ? <AuthedImage src={element.src} alt={element.alt || t("courseware.slide.imageAlt")} placeholder={<span className="ppt-slide-image-placeholder">{t("courseware.slide.imagePlaceholder")}</span>} /> : isImage ? <span className="ppt-slide-image-placeholder">{t("courseware.slide.imagePlaceholder")}</span> : isShape ? null : text}
             {editable && selectedId === element.id && onResizeStart ? (
               <button className="ppt-resize-handle" type="button" aria-label={t("courseware.slide.resize")} onPointerDown={(event) => onResizeStart(event, element)} />
             ) : null}

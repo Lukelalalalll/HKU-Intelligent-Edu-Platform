@@ -1,0 +1,20 @@
+/**
+ * Small global pieces used by the studio but owned by shared components.
+ * Everything page-specific lives in `studio.css`.
+ */
+
+.authed-image-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg, rgba(10, 107, 74, 0.05), transparent 60%),
+    repeating-linear-gradient(135deg, #eef3ee 0 10px, #e7ede7 10px 20px);
+}
+
+/* Keep a broken asset from collapsing a slide image slot. */
+.st-workspace .ppt-slide-element img.authed-image-placeholder,
+.st-workspace .ppt-slide-element .authed-image-placeholder {
+  width: 100%;
+  height: 100%;
+}

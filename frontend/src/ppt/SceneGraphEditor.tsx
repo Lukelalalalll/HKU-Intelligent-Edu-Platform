@@ -7,6 +7,7 @@
  * while images load.
  */
 import React, { useEffect, useRef, useState } from "react";
+import { resolveAssetUrl } from "../shared/lib/authedAssets";
 import { fabric } from "fabric";
 import type { PptDocument, PptEditorAsset, PptSlideElement, PptTextRun } from "../api";
 import { useI18n } from "../i18n";
@@ -118,15 +119,18 @@ function addElement(canvas: fabric.Canvas, element: PptSlideElement): Promise<Pp
         } catch {
           imageOptions = undefined;
         }
-        fabric.Image.fromURL(source, (image: fabric.Image, isError?: boolean) => {
-          window.clearTimeout(timeout);
-          if (isError || !image || !image.getElement?.()) return finish(null);
-          image.set({ ...common, width: image.width || width, height: image.height || height, scaleX: width / (image.width || width), scaleY: height / (image.height || height), objectFit: element.object_fit, flipX: element.flip_x, flipY: element.flip_y, lockUniScale: element.lock_aspect_ratio !== false } as any);
-          const target = image as PptFabricObject & fabric.Image;
-          target.pptElement = element; target.pptType = "image"; target.assetId = element.asset_id;
-          target.naturalWidth = element.natural_width || image.width || width; target.naturalHeight = element.natural_height || image.height || height;
-          canvas.add(image); finish(target);
-        }, imageOptions);
+        void resolveAssetUrl(source).then((resolved) => {
+          if (!resolved) { window.clearTimeout(timeout); finish(null); return; }
+          fabric.Image.fromURL(resolved, (image: fabric.Image, isError?: boolean) => {
+            window.clearTimeout(timeout);
+            if (isError || !image || !image.getElement?.()) return finish(null);
+            image.set({ ...common, width: image.width || width, height: image.height || height, scaleX: width / (image.width || width), scaleY: height / (image.height || height), objectFit: element.object_fit, flipX: element.flip_x, flipY: element.flip_y, lockUniScale: element.lock_aspect_ratio !== false } as any);
+            const target = image as PptFabricObject & fabric.Image;
+            target.pptElement = element; target.pptType = "image"; target.assetId = element.asset_id;
+            target.naturalWidth = element.natural_width || image.width || width; target.naturalHeight = element.natural_height || image.height || height;
+            canvas.add(image); finish(target);
+          }, imageOptions);
+        });
       } catch {
         window.clearTimeout(timeout);
         finish(null);
@@ -146,7 +150,7 @@ function addElement(canvas: fabric.Canvas, element: PptSlideElement): Promise<Pp
  */
 export default function SceneGraphEditor({ document, editable = true, onChange, onUploadImage }: Props) {
   const { t } = useI18n();
-  const canvasElement = useRef<HTMLCanvasElement | null>(null); const host = useRef<HTMLDivElement | null>(null); const stage = useRef<HTMLDivElement | null>(null); const canvasRef = useRef<fabric.Canvas | null>(null); const hydrating = useRef(false); const renderId = useRef(0); const initialized = useRef(false); const history = useRef<PptDocument[]>([]); const future = useRef<PptDocument[]>([]); const beforeChange = useRef<PptDocument | null>(null); const [selected, setSelected] = useState<PptFabricObject[]>([]); const [editing, setEditing] = useState(false); const [zoom, setZoom] = useState(0.8); const zoomRef = useRef(0.8); const [showGrid, setShowGrid] = useState(false); const [fallbackVisible, setFallbackVisible] = useState(false); const [liveDocument, setLiveDocument] = useState(document); const fileRef = useRef<HTMLInputElement | null>(null);
+  const canvasElement = useRef<HTMLCanvasElement | null>(null); const host = useRef<HTMLDivElement | null>(null); const stage = useRef<HTMLDivElement | null>(null); const canvasRef = useRef<fabric.Canvas | null>(null); const hydrating = useRef(false); const renderId = useRef(0); const initialized = useRef(false); const history = useRef<PptDocument[]>([]); const future = useRef<PptDocument[]>([]); const beforeChange = useRef<PptDocument | null>(null); const [selected, setSelected] = useState<PptFabricObject[]>([]); const [editing, setEditing] = useState(false); const [zoom, setZoom] = useState(1); const zoomRef = useRef(1); const [showGrid, setShowGrid] = useState(false); const [fallbackVisible, setFallbackVisible] = useState(false); const [liveDocument, setLiveDocument] = useState(document); const fileRef = useRef<HTMLInputElement | null>(null);
   const propertiesCollapsed = selected.length === 0;
   const active = selected[0]; const textActive = isText(active); const imageActive = active?.type === "image";
   const emit = () => { const canvas = canvasRef.current; if (!canvas || hydrating.current) return; const next = { ...documentFromCanvas(canvas), theme: document.theme, layout: document.layout, speaker_notes: document.speaker_notes }; setLiveDocument(next); onChange?.(next); };
