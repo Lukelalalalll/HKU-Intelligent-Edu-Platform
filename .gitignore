@@ -21,6 +21,9 @@ frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
 
+# Generated i18n visual-verification screenshots (local artifacts)
+docs/i18n/
+
 # Secrets and local configuration
 .env
 .env.*
