@@ -29,7 +29,11 @@
 @media (max-width: 680px){.ppt-immersive-shell{display:block;overflow:auto;height:auto}.ppt-project-sidebar{position:sticky;top:0;z-index:5;min-height:auto;padding:10px 12px;display:block}.ppt-sidebar-brand,.ppt-sidebar-project,.ppt-sidebar-pages,.ppt-sidebar-footer{display:none}.ppt-project-nav{display:flex;margin:6px 0 0;overflow:auto}.ppt-project-nav button{white-space:nowrap;padding:8px}.ppt-immersive-body{height:calc(100dvh - 82px);display:block}.ppt-immersive-header{height:62px;padding:0 14px}.ppt-start-grid,.ppt-workspace-grid{padding:14px;display:block}.ppt-start-brief{margin-top:14px}}
 
 * { box-sizing: border-box; }
-html { min-height: 100%; }
+html {
+  min-height: 100%;
+  /* Fixed header must never cover scrollIntoView()/hash targets. */
+  scroll-padding-top: var(--nav-height);
+}
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -45,10 +49,16 @@ button, input { font: inherit; }
 button { border: 0; }
 a { color: inherit; }
 
-/* Shared HKU navigation */
+/* Shared HKU navigation
+   The header is pinned to the viewport (fixed, not sticky) so it cannot
+   re-measure/jitter while the page scrolls. A matching spacer keeps the
+   header's original 60px footprint in normal flow, so page layouts and
+   the `calc(100dvh - var(--nav-height))` workspaces stay untouched. */
 .site-header {
-  position: sticky;
+  position: fixed;
   top: 0;
+  right: 0;
+  left: 0;
   z-index: 20;
   height: var(--nav-height);
   background: rgba(255, 255, 255, 0.9);
@@ -56,6 +66,10 @@ a { color: inherit; }
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+.site-header-spacer {
+  height: var(--nav-height);
+  flex: 0 0 auto;
 }
 .site-header-inner {
   width: 100%;
