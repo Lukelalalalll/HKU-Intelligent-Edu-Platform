@@ -1,3 +1,7 @@
+/**
+ * PPT studio workspace: requirement chat, outline, visual research, theme,
+ * layouting, preview editing and presentation.
+ */
 import React, { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
@@ -144,6 +148,9 @@ function PreviewEditor({ pages, selected, onSelect, onSave, onReorder, saving }:
   return <div className="ppt-rich-editor"><aside className="ppt-rich-thumbnails"><div className="ppt-thumb-head"><strong>页面</strong><span>{pages.length} 张</span></div><div className="ppt-thumb-list">{pages.map((item, i) => <div key={item.id} draggable onDragStart={() => setDragId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!dragId || dragId === item.id) return; const ids = pages.map((entry) => entry.id); const from = ids.indexOf(dragId); const to = ids.indexOf(item.id); ids.splice(from, 1); ids.splice(to, 0, dragId); onReorder(ids); setDragId(null); }}><SlideThumbnail page={{ ...item, sort_order: i }} selected={i === selected} onClick={() => onSelect(i)} /></div>)}</div></aside><main className="ppt-rich-main"><div className="ppt-rich-canvas"><SlideCanvas page={page} editable onChange={(doc) => page && onSave(page, doc)} /></div></main></div>;
 }
 
+/**
+ * Drive one PPT project through the studio surfaces.
+ */
 export default function CoursewareAgent() {
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId?: string }>();

@@ -2,6 +2,9 @@ import type { Course } from '../../../api';
 import CourseCard from './CourseCard';
 import styles from '../styles/CoursesRoute.module.css';
 
+/**
+ * Course card grid with a search-aware empty state.
+ */
 export default function CourseGrid({ courses, searching }: { courses: Course[]; searching: boolean }) {
   if (!courses.length) {
     return (

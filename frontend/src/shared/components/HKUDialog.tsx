@@ -1,7 +1,13 @@
 import React, { useEffect, useId, useRef } from "react";
 
+/**
+ * Backdrop scope: ``viewport`` covers chrome, ``surface`` stays inside a card.
+ */
 export type HKUDialogScope = "viewport" | "surface";
 
+/**
+ * Dialog shell props; ``open`` keeps the dialog unmounted when false.
+ */
 export type HKUDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -46,6 +52,9 @@ export function HKUDialog({ open, onClose, title, description, eyebrow, icon, sc
   );
 }
 
+/**
+ * Confirm dialog props; ``loading`` disables both actions.
+ */
 export type HKUConfirmDialogProps = Omit<HKUDialogProps, "children"> & {
   onConfirm: () => void | Promise<void>;
   confirmLabel?: string;
@@ -54,6 +63,9 @@ export type HKUConfirmDialogProps = Omit<HKUDialogProps, "children"> & {
   confirmTone?: "danger" | "primary";
 };
 
+/**
+ * Destructive or primary confirmation built on ``HKUDialog``.
+ */
 export function HKUConfirmDialog({ onConfirm, confirmLabel = "确认", cancelLabel = "取消", loading = false, confirmTone = "danger", onClose, ...dialogProps }: HKUConfirmDialogProps) {
   return (
     <HKUDialog {...dialogProps} onClose={onClose}>

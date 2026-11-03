@@ -4,6 +4,9 @@ import { useAuth } from "../../store";
 import WorkspaceSidebar, { readSidebarCollapsed, SidebarItem, writeSidebarCollapsed } from "../../shared/components/WorkspaceSidebar";
 import SiteHeader from "./SiteHeader";
 
+/**
+ * Authenticated shell: fixed header, workspace sidebar and routed content.
+ */
 export default function Shell() {
   const { user } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(readSidebarCollapsed);

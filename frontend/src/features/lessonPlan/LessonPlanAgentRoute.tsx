@@ -7,6 +7,9 @@ import "./LessonPlanAgentRoute.css";
 type Project = { id: string; title: string; request_text: string; page_count: number };
 type Page = { id: string; title: string; document: unknown; revision: number };
 
+/**
+ * Lesson plan agent workspace: create, chat and generate the PDF.
+ */
 export default function LessonPlanAgentRoute() {
   const { projectId } = useParams(); const nav = useNavigate(); const [projects, setProjects] = React.useState<Project[]>([]); const [project, setProject] = React.useState<Project | null>(null); const [pages, setPages] = React.useState<Page[]>([]); const [prompt, setPrompt] = React.useState(""); const [input, setInput] = React.useState(""); const [chat, setChat] = React.useState<{ role: "user" | "agent"; text: string }[]>([]); const [busy, setBusy] = React.useState(false); const [active, setActive] = React.useState(0);
   const load = React.useCallback(async () => { const list = (await api.get<{ items: Project[] }>("/lesson-plans/projects")).data.items; setProjects(list); if (projectId) { setProject((await api.get<Project>(`/lesson-plans/projects/${projectId}`)).data); setPages((await api.get<{ items: Page[] }>(`/lesson-plans/projects/${projectId}/pages`)).data.items); } else setProject(null); }, [projectId]); React.useEffect(() => { void load(); }, [load]);

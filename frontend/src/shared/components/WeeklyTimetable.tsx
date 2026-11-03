@@ -1,6 +1,9 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
+/**
+ * One weekly schedule entry plotted on the timetable grid.
+ */
 export type TimetableItem = {
   course_id: string;
   course_code: string;
@@ -31,6 +34,9 @@ const scheduleAxisOffset = (minutes: number) => {
   return (SCHEDULE_DAYTIME_END - SCHEDULE_START_MINUTES) + (safeMinutes - SCHEDULE_DAYTIME_END) * 0.5;
 };
 
+/**
+ * Week grid that plots schedule items and navigates to course detail.
+ */
 export default function WeeklyTimetable({ items, weekOffset, onWeekOffsetChange, title = "本周课程表" }: { items: TimetableItem[]; weekOffset: number; onWeekOffsetChange: (offset: number) => void; title?: string }) {
   const navigate = useNavigate();
   const base = new Date();

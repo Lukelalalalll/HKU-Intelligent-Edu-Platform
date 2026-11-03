@@ -6,6 +6,9 @@ import { formatCourseLocations, formatCourseTimes, formatDateRange, SEMESTER_LAB
 import styles from '../styles/CoursesRoute.module.css';
 import LiveClassPanel from '../components/LiveClassPanel';
 
+/**
+ * Course detail hero with the live-class workspace.
+ */
 export default function CourseDetailRoute() {
   const { courseId } = useParams();
   const courseQuery = useCourseQuery(courseId);

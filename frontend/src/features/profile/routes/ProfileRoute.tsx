@@ -11,6 +11,9 @@ function Avatar({ user, cacheKey }: { user: User; cacheKey: number }) {
   return <div className={styles.avatarFallback} aria-hidden="true">{(user.name || user.username).slice(0, 1).toUpperCase()}</div>;
 }
 
+/**
+ * Profile page: account fields, avatar upload and password change.
+ */
 export default function ProfileRoute() {
   const authUser = useAuth((state) => state.user);
   const setUser = useAuth((state) => state.setUser);

@@ -12,6 +12,9 @@ import { AssignmentsModule, MaterialsModule, ParticipantModule } from "./CourseM
 const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const formatTime = (value: string | null) => value ? new Intl.DateTimeFormat("zh-CN", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "暂无下一课次";
 
+/**
+ * Modules shown in the course workspace navigation.
+ */
 export const courseSidebarItems = ["Announcements", "Assignments", "Discussions", "Grades", "Participant", "Syllabus", "Lecture Files", "Tutorial File", "Zoom"];
 const sidebarItems = courseSidebarItems;
 const zoomTabs = [
@@ -21,6 +24,11 @@ const zoomTabs = [
   { id: "summary", label: "Meeting Summary" },
 ] as const;
 
+/**
+ * Course workspace with Zoom, materials, assignments and discussion tabs.
+ *
+ * The active module is mirrored into the ``module`` query parameter.
+ */
 export default function LiveClassPanel({ courseId, course }: { courseId: string; course?: Course }) {
   const user = useAuth((state) => state.user);
   const navigate = useNavigate();

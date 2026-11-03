@@ -4,6 +4,9 @@ import { useAuth } from "../../store";
 import logoImg from "../../assets/hku_logo.png";
 import Breadcrumbs from "../../shared/components/Breadcrumbs";
 
+/**
+ * Top bar with logo, breadcrumbs and account or logout controls.
+ */
 function SiteHeader() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();

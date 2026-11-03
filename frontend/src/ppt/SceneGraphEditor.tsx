@@ -1,3 +1,11 @@
+/**
+ * Fabric-backed canvas editor for slide documents.
+ *
+ * Objects live in the 1280x720 logical space; the fitted display scale goes
+ * through the Fabric viewport transform and the retina backing store uses
+ * ``devicePixelRatio``.  A DOM renderer stays underneath as a visual fallback
+ * while images load.
+ */
 import React, { useEffect, useRef, useState } from "react";
 import { fabric } from "fabric";
 import type { PptDocument, PptEditorAsset, PptSlideElement, PptTextRun } from "../api";
@@ -132,6 +140,9 @@ function addElement(canvas: fabric.Canvas, element: PptSlideElement): Promise<Pp
   applyRuns(text, element.text_runs); (text as PptFabricObject).pptElement = element; (text as PptFabricObject).pptType = element.type || "text"; canvas.add(text); return Promise.resolve(text as PptFabricObject);
 }
 
+/**
+ * Editable Fabric canvas with undo, alignment and property controls.
+ */
 export default function SceneGraphEditor({ document, editable = true, onChange, onUploadImage }: Props) {
   const canvasElement = useRef<HTMLCanvasElement | null>(null); const host = useRef<HTMLDivElement | null>(null); const stage = useRef<HTMLDivElement | null>(null); const canvasRef = useRef<fabric.Canvas | null>(null); const hydrating = useRef(false); const renderId = useRef(0); const initialized = useRef(false); const history = useRef<PptDocument[]>([]); const future = useRef<PptDocument[]>([]); const beforeChange = useRef<PptDocument | null>(null); const [selected, setSelected] = useState<PptFabricObject[]>([]); const [editing, setEditing] = useState(false); const [zoom, setZoom] = useState(0.8); const zoomRef = useRef(0.8); const [showGrid, setShowGrid] = useState(false); const [fallbackVisible, setFallbackVisible] = useState(false); const [liveDocument, setLiveDocument] = useState(document); const fileRef = useRef<HTMLInputElement | null>(null);
   const propertiesCollapsed = selected.length === 0;

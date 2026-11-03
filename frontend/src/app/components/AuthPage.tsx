@@ -11,6 +11,9 @@ const demoAccounts = [
   { label: "管理员演示", username: "demo_admin" },
 ];
 
+/**
+ * Login and registration form with the optional local demo shortcuts.
+ */
 export default function AuthPage({ mode }: { mode: "login" | "register" }) {
   const navigate = useNavigate();
   const { user, login } = useAuth();

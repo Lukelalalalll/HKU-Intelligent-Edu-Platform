@@ -1,12 +1,24 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { PptDocument, PptPage, PptSlideElement } from "../api";
 
+/**
+ * Logical slide width; element coordinates are percentages of it.
+ */
 export const SLIDE_WIDTH = 1280;
+/**
+ * Logical slide height; element coordinates are percentages of it.
+ */
 export const SLIDE_HEIGHT = 720;
 
+/**
+ * Return the CSS background for a document theme.
+ */
 export const themeBackground = (document?: PptDocument | null) =>
   String(document?.theme?.background || document?.theme?.bg || "linear-gradient(135deg,#fbfefc,#eaf7ef)");
 
+/**
+ * Build a title-and-bullets document for a page without one.
+ */
 export const defaultDocument = (page: PptPage): PptDocument => {
   const theme = page.document?.theme || {};
   const bodyColor = String(theme.body || "#21463a");
@@ -32,9 +44,15 @@ export const defaultDocument = (page: PptPage): PptDocument => {
   };
 };
 
+/**
+ * Return the saved document or a generated fallback for editing.
+ */
 export const editableDocument = (page: PptPage): PptDocument =>
   page.document?.elements?.length ? page.document : defaultDocument(page);
 
+/**
+ * Renderer props; editing callbacks are only used when ``editable``.
+ */
 export type SlideRendererProps = {
   document: PptDocument;
   selectedId?: string | null;
@@ -49,6 +67,9 @@ export type SlideRendererProps = {
 
 const elementText = (element: PptSlideElement) => element.text || (element.items || []).join("\n");
 
+/**
+ * Render a slide document as positioned DOM elements.
+ */
 export function SlideRenderer({
   document,
   selectedId = null,
@@ -117,6 +138,9 @@ export function SlideRenderer({
   );
 }
 
+/**
+ * Scaled read-only slide thumbnail for the page list.
+ */
 export function SlideThumbnail({ page, selected, onClick }: { page: PptPage; selected: boolean; onClick: () => void }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.15);

@@ -1,6 +1,9 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 
+/**
+ * One rendered breadcrumb; ``href`` makes it a link unless it is the current page.
+ */
 export type BreadcrumbItem = {
   label: string;
   href?: string;
@@ -60,6 +63,9 @@ export function buildBreadcrumbs(pathname: string): BreadcrumbItem[] {
   return [{ label: "总览", href: "/" }, { label: "当前页面" }];
 }
 
+/**
+ * Route-aware breadcrumb trail rendered by the site header.
+ */
 export default function Breadcrumbs() {
   const { pathname } = useLocation();
   const items = buildBreadcrumbs(pathname);

@@ -1,3 +1,6 @@
+/**
+ * Browser entry point: mounts the router, app shell and global toast host.
+ */
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";

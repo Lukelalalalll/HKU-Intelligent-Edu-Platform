@@ -4,6 +4,9 @@ import { studentApi, fileApi, type CoursewareQuery, type AgentMessage, type Uplo
 import styles from "./CoursewareAgentRoute.module.css";
 type Message={role:"user"|"assistant";text:string;result?:CoursewareQuery};
 type Conversation={id:string;title:string;created_at:string};
+/**
+ * Student AI lecturer chat backed by courseware RAG.
+ */
 export default function CoursewareAgentRoute(){
  const [params]=useSearchParams(); const [conversations,setConversations]=React.useState<Conversation[]>([]); const [active,setActive]=React.useState<Conversation|null>(null); const [question,setQuestion]=React.useState(""); const [messages,setMessages]=React.useState<Message[]>([]); const [typing,setTyping]=React.useState(""); const [busy,setBusy]=React.useState(false); const [attachments,setAttachments]=React.useState<UploadedFile[]>([]); const [attachmentStatus,setAttachmentStatus]=React.useState<Record<string,string>>({}); const bottom=React.useRef<HTMLDivElement>(null); const attachmentRef=React.useRef<HTMLInputElement>(null);
  const load=async()=>{const list=(await studentApi.coursewareConversations()).data as Conversation[];setConversations(list); const fresh=(await studentApi.createCoursewareConversation()).data as Conversation; setConversations(x=>[fresh,...x]);setActive(fresh);setMessages([]);}; React.useEffect(()=>{void load();},[]); React.useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[messages,typing]);

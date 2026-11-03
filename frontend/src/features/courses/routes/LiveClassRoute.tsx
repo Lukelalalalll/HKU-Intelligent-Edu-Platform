@@ -4,6 +4,9 @@ import toast from "react-hot-toast";
 import { getApiErrorMessage, liveClassApi, type LiveClassAuthorization } from "../../../api";
 import { useAuth } from "../../../store";
 
+/**
+ * Zoom Meeting SDK view for one class occurrence.
+ */
 export default function LiveClassRoute() {
   const { courseId } = useParams();
   const [params] = useSearchParams();

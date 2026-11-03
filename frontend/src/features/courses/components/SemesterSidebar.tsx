@@ -19,6 +19,9 @@ type Props = {
   onSelect: (year: number, semester: CourseSemester) => void;
 };
 
+/**
+ * Academic-year and semester picker with enrollment counts.
+ */
 export default function SemesterSidebar({ courses, years, selectedYear, selectedSemester, currentYear, currentSemester, onSelect }: Props) {
   const currentYears = years.filter((year) => year === currentYear);
   const previousYears = years.filter((year) => year !== currentYear);

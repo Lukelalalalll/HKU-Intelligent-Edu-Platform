@@ -2,6 +2,9 @@ import React, { useEffect, useState } from "react";
 import { fileAssetsApi, getApiErrorMessage, pptApi, type AvailablePptExport, type FileAsset, type PptProject } from "../../api";
 import toast from "react-hot-toast";
 
+/**
+ * Upload-or-pick modal shared by materials and assignment editors.
+ */
 export default function FileUploadModal({ open, onClose, onSubmit, title = "上传文件", accept = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.txt,.md,.markdown,image/*", extra }: { open: boolean; onClose: () => void; onSubmit: (assets: FileAsset[]) => Promise<void>; title?: string; accept?: string; extra?: React.ReactNode }) {
   const [files, setFiles] = useState<File[]>([]); const [pptx, setPptx] = useState<AvailablePptExport[]>([]); const [projects, setProjects] = useState<Record<string, PptProject>>({}); const [selected, setSelected] = useState<string[]>([]); const [query, setQuery] = useState(""); const [busy, setBusy] = useState(false); const [drag, setDrag] = useState(false); const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   useEffect(() => { if (open) { setFiles([]); setSelected([]); setQuery(""); Promise.all([fileAssetsApi.availablePpt(), pptApi.projects()]).then(([a, p]) => { setPptx(a.data.items); setProjects(Object.fromEntries(p.data.items.map(x => [x.id, x]))); }).catch(() => { setPptx([]); setProjects({}); }); } }, [open]);

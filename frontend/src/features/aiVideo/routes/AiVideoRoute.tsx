@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { api, fileApi, teacherVideoApi, type Course, type VideoProject } from "../../../api";
 import styles from "../styles/AiVideoRoute.module.css";
 
+/**
+ * Video project list and creation form.
+ */
 export default function AiVideoRoute() {
   const [projects, setProjects] = React.useState<VideoProject[]>([]); const [courses, setCourses] = React.useState<Course[]>([]); const [title, setTitle] = React.useState(""); const [text, setText] = React.useState(""); const [courseId, setCourseId] = React.useState(""); const [objectives, setObjectives] = React.useState(""); const [audience, setAudience] = React.useState(""); const [duration, setDuration] = React.useState(120); const [language, setLanguage] = React.useState("zh-HK"); const [style, setStyle] = React.useState("lecture"); const [provider, setProvider] = React.useState<"coze" | "local">("local"); const [voice, setVoice] = React.useState(true); const [captions, setCaptions] = React.useState(true); const [avatar, setAvatar] = React.useState(false); const [file, setFile] = React.useState<File | null>(null); const [busy, setBusy] = React.useState(false); const nav = useNavigate();
   const load = React.useCallback(() => Promise.all([teacherVideoApi.listProjects(), api.get<Course[]>("/courses")]).then(([p, c]) => { setProjects(p.data); setCourses(c.data); }).catch(() => undefined), []); React.useEffect(() => { void load(); }, [load]);

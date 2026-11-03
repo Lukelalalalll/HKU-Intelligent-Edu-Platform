@@ -3,6 +3,9 @@ import type { Course } from '../../../api';
 import { formatDateRange, SEMESTER_LABELS, semesterDateRange } from '../courseTerms';
 import styles from '../styles/CoursesRoute.module.css';
 
+/**
+ * Course summary card linking to the course detail route.
+ */
 export default function CourseCard({ course }: { course: Course }) {
   return (
     <Link to={`/courses/${course.id}`} className={styles.courseCard}>

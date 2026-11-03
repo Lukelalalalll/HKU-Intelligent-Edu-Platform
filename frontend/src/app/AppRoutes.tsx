@@ -1,3 +1,9 @@
+/**
+ * Route table for the application shell.
+ *
+ * Feature pages are lazy chunks; guarded routes redirect to ``/login`` and the
+ * role gates bounce users to their own landing page.
+ */
 import React, { Suspense, lazy, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "../store";
@@ -24,6 +30,9 @@ const demoAccounts = [
   { label: "管理员演示", username: "demo_admin" },
 ];
 
+/**
+ * Application route tree with lazy feature chunks and auth bootstrap.
+ */
 export default function App() {
   const bootstrap = useAuth((state) => state.bootstrap);
   useEffect(() => { bootstrap(); }, [bootstrap]);

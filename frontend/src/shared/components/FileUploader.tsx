@@ -1,8 +1,14 @@
 import React from "react";
 import { fileApi, getApiErrorMessage, type ProcessingDocument, type UploadedFile } from "../../api";
 
+/**
+ * File picker filter matching the backend processing whitelist.
+ */
 export const PROCESSABLE_ACCEPT = ".pdf,.pptx,.docx,.xlsx,.xls,.txt,.md,.markdown,.csv,.json,image/png,image/jpeg,image/webp";
 
+/**
+ * Compact processing-state label for an uploaded document.
+ */
 export function ProcessingStatus({ document, onRetry }: { document?: ProcessingDocument | null; onRetry?: () => void }) {
   if (!document) return null;
   const job = document.job;
@@ -10,6 +16,9 @@ export function ProcessingStatus({ document, onRetry }: { document?: ProcessingD
   return <span className={`file-processing-status file-processing-${document.status}`} title={document.error_message || undefined}>{status}{document.status === "failed" && onRetry ? <button type="button" onClick={onRetry}>重试</button> : null}</span>;
 }
 
+/**
+ * Upload files through the processing pipeline and report the assets.
+ */
 export default function FileUploader({ onUploaded, accept = PROCESSABLE_ACCEPT, multiple = true, disabled = false }: { onUploaded: (items: UploadedFile[]) => void; accept?: string; multiple?: boolean; disabled?: boolean }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);

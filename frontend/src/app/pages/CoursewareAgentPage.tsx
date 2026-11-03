@@ -2,6 +2,11 @@ import React, { useEffect } from "react";
 import toast from "react-hot-toast";
 import { AgentConversation, AgentMessage, api } from "../../api";
 
+/**
+ * Agent chat page backed by the teacher conversation API.
+ *
+ * Assistant replies are a local demo until generation is wired in.
+ */
 export default function CoursewareAgent() {
   const [conversations, setConversations] = React.useState<AgentConversation[]>([]); const [activeId, setActiveId] = React.useState<string | null>(null); const [messages, setMessages] = React.useState<AgentMessage[]>([]); const [draft, setDraft] = React.useState(""); const [streaming, setStreaming] = React.useState(false); const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const loadConversations = React.useCallback(() => api.get<AgentConversation[]>("/agent/conversations").then((r) => { setConversations(r.data); if (!activeId && r.data[0]) setActiveId(r.data[0].id); }).catch(() => undefined), [activeId]);

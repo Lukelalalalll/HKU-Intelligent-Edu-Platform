@@ -1,3 +1,8 @@
+/**
+ * Course workspace modules shared by the course detail route.
+ *
+ * Each module owns its own loading, error and teacher-only actions.
+ */
 import React, { useState } from "react";
 import toast from "react-hot-toast";
 import { courseMaterialsApi, getApiErrorMessage, assignmentsApi, type Assignment, type CourseChapter, type CourseMaterial, type FileAsset, type MaterialKind, type Participant } from "../../../api";
@@ -7,6 +12,9 @@ import styles from "../styles/CoursesRoute.module.css";
 const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const formatTime = (value: string | null) => value ? new Intl.DateTimeFormat("zh-CN", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "暂无下一课次";
 
+/**
+ * Participant roster; contact details are only rendered for teachers.
+ */
 export function ParticipantModule({ participants, loading, error, isTeacher, currentUserId }: { participants: Participant[]; loading: boolean; error: boolean; isTeacher: boolean; currentUserId?: string }) {
   return <div className={styles.participantContent}>
     <header className={styles.participantHeading}><div><p className="eyebrow">COURSE PARTICIPANTS</p><h2>Participant</h2><span>{participants.length} 名学生</span></div><i className="fas fa-user-group" /></header>
@@ -14,6 +22,9 @@ export function ParticipantModule({ participants, loading, error, isTeacher, cur
   </div>;
 }
 
+/**
+ * Chapter list plus material upload, rename, reorder and delete.
+ */
 export function MaterialsModule({ courseId, kind, chapters, loading, error, selectedChapterId, onSelectChapter, onRefresh, isTeacher }: { courseId: string; kind: MaterialKind; chapters: CourseChapter[]; loading: boolean; error: boolean; selectedChapterId: string | null; onSelectChapter: (id: string) => void; onRefresh: () => Promise<void>; isTeacher: boolean }) {
   const [busy, setBusy] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -105,6 +116,9 @@ export function MaterialsModule({ courseId, kind, chapters, loading, error, sele
   </div>;
 }
 
+/**
+ * Assignment composer and list for one course.
+ */
 export function AssignmentsModule({ courseId, assignments, loading, error, isTeacher, onRefresh, onGrade }: { courseId: string; assignments: Assignment[]; loading: boolean; error: boolean; isTeacher: boolean; onRefresh: () => Promise<void>; onGrade: (id: string) => void }) {
   const [form, setForm] = useState({ title: "", description: "", due_at: "", max_score: "100" }); const [assets, setAssets] = useState<FileAsset[]>([]); const [modalOpen, setModalOpen] = useState(false); const [busy, setBusy] = useState(false);
   const create = async () => { if (!form.title.trim()) return; setBusy(true); try { await assignmentsApi.create(courseId, { ...form, due_at: form.due_at || null, max_score: Number(form.max_score), file_asset_ids: assets.map((asset) => asset.id) }); setForm({ title: "", description: "", due_at: "", max_score: "100" }); setAssets([]); await onRefresh(); toast.success("作业已发布"); } catch (error: unknown) { toast.error(getApiErrorMessage(error, "发布失败")); } finally { setBusy(false); } };

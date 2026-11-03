@@ -6,6 +6,9 @@ import { queryKeys } from "../../../queryClient";
 import { useVideoJobActions, useVideoJobsQuery, useVideoProjectQuery, useVideoScenesQuery } from "../../../hooks/useVideoQueries";
 import styles from "../styles/AiVideoRoute.module.css";
 
+/**
+ * Video project workspace: job progress, scenes and SSE updates.
+ */
 export default function AiVideoProjectRoute() {
   const { projectId = "" } = useParams();
   const nav = useNavigate();

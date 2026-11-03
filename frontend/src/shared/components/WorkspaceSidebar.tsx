@@ -2,8 +2,14 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import type { Role } from "../../api";
 
+/**
+ * Icon keys supported by the sidebar icon set.
+ */
 export type SidebarIconName = "overview" | "courses" | "assignments" | "courseware" | "lessonPlan" | "video" | "ai" | "admin" | "profile" | "collapse" | "expand";
 
+/**
+ * Sidebar link definition filtered by the signed-in role.
+ */
 export type SidebarItem = {
   to: string;
   label: string;
@@ -19,13 +25,22 @@ type WorkspaceSidebarProps = {
   onToggle: () => void;
 };
 
+/**
+ * localStorage key that persists the collapsed sidebar state.
+ */
 export const SIDEBAR_STORAGE_KEY = "hku-sidebar-collapsed";
 
+/**
+ * Read the persisted sidebar state; defaults to expanded.
+ */
 export function readSidebarCollapsed(storage?: Pick<Storage, "getItem">): boolean {
   const source = storage ?? (typeof window !== "undefined" ? window.localStorage : undefined);
   return source?.getItem(SIDEBAR_STORAGE_KEY) === "1";
 }
 
+/**
+ * Persist the collapsed sidebar state.
+ */
 export function writeSidebarCollapsed(collapsed: boolean, storage?: Pick<Storage, "setItem">): void {
   const target = storage ?? (typeof window !== "undefined" ? window.localStorage : undefined);
   target?.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
@@ -45,6 +60,9 @@ const iconPaths: Record<SidebarIconName, string[]> = {
   expand: ["m9 18 6-6-6-6", "M4 12h11"],
 };
 
+/**
+ * Render one sidebar icon by name.
+ */
 export function SidebarIcon({ name }: { name: SidebarIconName }) {
   return (
     <svg className="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
@@ -53,6 +71,9 @@ export function SidebarIcon({ name }: { name: SidebarIconName }) {
   );
 }
 
+/**
+ * Collapsible, role-filtered workspace navigation.
+ */
 export default function WorkspaceSidebar({ userRole, links, collapsed, onToggle }: WorkspaceSidebarProps) {
   const visibleLinks = links.filter((link) => userRole && link.roles.includes(userRole));
   return (

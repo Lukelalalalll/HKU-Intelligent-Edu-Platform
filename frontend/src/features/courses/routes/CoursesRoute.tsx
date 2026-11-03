@@ -13,6 +13,9 @@ import {
 } from '../courseTerms';
 import styles from '../styles/CoursesRoute.module.css';
 
+/**
+ * Course browser: term picker, search and the course grid.
+ */
 export default function CoursesRoute() {
   const { user } = useAuth();
   const coursesQuery = useCoursesQuery();

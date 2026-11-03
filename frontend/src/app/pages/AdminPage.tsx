@@ -1,6 +1,12 @@
+/**
+ * Admin AI configuration console.
+ */
 import React from "react";
 import { adminAiApi, type AiBusiness, type AiProvider } from "../../api";
 
+/**
+ * Manage AI providers and the per-business model bindings.
+ */
 export default function Admin() {
   const [providers, setProviders] = React.useState<AiProvider[]>([]); const [businesses, setBusinesses] = React.useState<AiBusiness[]>([]); const [matchingDrafts, setMatchingDrafts] = React.useState<Record<string, { provider_id: string; model: string }>>({}); const [selected, setSelected] = React.useState<string | null>(null); const [draft, setDraft] = React.useState<{ name: string; provider_type: "openai" | "deepseek"; base_url: string; api_key: string; default_model: string; timeout_seconds: number; capabilities: Record<string, boolean>; is_enabled: boolean }>({ name: "DeepSeek", provider_type: "deepseek", base_url: "https://api.deepseek.com", api_key: "", default_model: "deepseek-v4-flash", timeout_seconds: 120, capabilities: { json: true, stream: true, web_search: true }, is_enabled: true }); const [busy, setBusy] = React.useState(false); const [matchingBusy, setMatchingBusy] = React.useState(false);
   const load = React.useCallback(async () => { const [p, b] = await Promise.all([adminAiApi.providers(), adminAiApi.businesses()]); setProviders(p.data.items); setBusinesses(b.data.items); setMatchingDrafts(Object.fromEntries(b.data.items.map((item) => [item.business_code, { provider_id: item.provider_id || "", model: item.model }]))); }, []); React.useEffect(() => { void load(); }, [load]);
