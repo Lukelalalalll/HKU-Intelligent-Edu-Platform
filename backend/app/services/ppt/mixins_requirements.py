@@ -291,7 +291,7 @@ class _RequirementsMixin:
         return {"project": self.serialize_project(p), "assignments": current, "layouts": layouts}
 
 
-    def serialize_generation(job: PptGenerationJob) -> dict[str, Any]:
+    def serialize_generation(self, job: PptGenerationJob) -> dict[str, Any]:
         """Serialize one generation job for the API."""
         return {
             "id": job.id, "project_id": job.project_id, "status": job.status,

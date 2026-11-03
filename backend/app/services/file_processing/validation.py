@@ -1,5 +1,6 @@
 """Upload validation: file names, extensions, sizes and declared MIME types."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.core.config import settings
@@ -7,8 +8,6 @@ from app.core.config import settings
 SUPPORTED_EXTENSIONS = {".pdf", ".pptx", ".docx", ".xlsx", ".xls", ".txt", ".md", ".markdown", ".csv", ".json", ".png", ".jpg", ".jpeg", ".webp"}
 
 
-# TODO(comment): verify this helper; ``datetime`` and ``timezone``
-# are not imported in this module and no caller uses it today.
 def now_utc() -> datetime:
     """Return the current UTC time."""
     return datetime.now(timezone.utc)
