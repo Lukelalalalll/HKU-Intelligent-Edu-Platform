@@ -6,6 +6,7 @@
  * shared cookies.  Failures are normalized to ``ApiError``.
  */
 import axios, { AxiosError, type AxiosRequestConfig } from "axios";
+import { translate } from "../i18n/translate";
 
 /**
  * sessionStorage key of the per-tab development access token.
@@ -34,7 +35,7 @@ export function isApiError(error: unknown): error is ApiError {
 /**
  * Return a user-facing message, falling back to the backend detail.
  */
-export function getApiErrorMessage(error: unknown, fallback = "请求失败，请稍后重试"): string {
+export function getApiErrorMessage(error: unknown, fallback = translate("errors.requestFailed")): string {
   if (isApiError(error)) return error.message || fallback;
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;
@@ -72,12 +73,12 @@ export function toApiError(error: unknown): ApiError {
   if (axios.isAxiosError(error)) {
     const response = error.response;
     const detail = response?.data?.detail;
-    const message = typeof detail === "string" ? detail : error.message || "请求失败";
+    const message = typeof detail === "string" ? detail : error.message || translate("errors.requestFailedShort");
     const status = response?.status;
     return { status, code: response?.data?.code, message, retryable: !status || status >= 500 || status === 429, cause: error };
   }
   if (error instanceof Error) return { message: error.message, retryable: true, cause: error };
-  return { message: "请求失败，请稍后重试", retryable: true, cause: error };
+  return { message: translate("errors.requestFailed"), retryable: true, cause: error };
 }
 
 /**
@@ -115,9 +116,9 @@ export async function consumeSse<T extends SseEvent>(
 ): Promise<void> {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw toApiError(new Error(body || `请求失败 (${response.status})`));
+    throw toApiError(new Error(body || translate("errors.requestFailedWithStatus", { status: response.status })));
   }
-  if (!response.body) throw toApiError(new Error("服务端未返回事件流"));
+  if (!response.body) throw toApiError(new Error(translate("errors.eventStreamMissing")));
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

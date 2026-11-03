@@ -1,9 +1,10 @@
 import type { Course } from '../../../api';
+import { useI18n } from '../../../i18n';
 import {
   COURSE_SEMESTERS,
   formatAcademicYear,
   formatDateRange,
-  SEMESTER_LABELS,
+  formatSemesterLabel,
   semesterDateRange,
   type CourseSemester,
 } from '../courseTerms';
@@ -23,6 +24,7 @@ type Props = {
  * Academic-year and semester picker with enrollment counts.
  */
 export default function SemesterSidebar({ courses, years, selectedYear, selectedSemester, currentYear, currentSemester, onSelect }: Props) {
+  const { t, locale } = useI18n();
   const currentYears = years.filter((year) => year === currentYear);
   const previousYears = years.filter((year) => year !== currentYear);
   const renderYear = (year: number) => (
@@ -30,7 +32,7 @@ export default function SemesterSidebar({ courses, years, selectedYear, selected
       <div className={styles.yearHeader}>
         <div>
           <strong>{formatAcademicYear(year)}</strong>
-          {year === currentYear && <span className={styles.currentBadge}>Current academic year</span>}
+          {year === currentYear && <span className={styles.currentBadge}>{t('courses.sidebar.currentAcademicYear')}</span>}
         </div>
         <span className={styles.yearCount}>{courses.filter((course) => course.academic_year_start === year).length}</span>
       </div>
@@ -48,9 +50,9 @@ export default function SemesterSidebar({ courses, years, selectedYear, selected
               onClick={() => onSelect(year, semester)}
             >
               <span>
-                <b>{SEMESTER_LABELS[semester]}</b>
-                <small>{formatDateRange(semesterDateRange(year, semester))}</small>
-                {isCurrent && <em>Current</em>}
+                <b>{formatSemesterLabel(semester, t)}</b>
+                <small>{formatDateRange(semesterDateRange(year, semester), locale)}</small>
+                {isCurrent && <em>{t('courses.sidebar.current')}</em>}
               </span>
               <strong>{count}</strong>
             </button>
@@ -61,15 +63,14 @@ export default function SemesterSidebar({ courses, years, selectedYear, selected
   );
 
   return (
-    <aside className={styles.sidebar} aria-label="Academic year and semester">
+    <aside className={styles.sidebar} aria-label={t('courses.sidebar.ariaLabel')}>
       <div className={styles.sidebarIntro}>
         <span>ACADEMIC YEAR</span>
-        <strong>Browse semesters</strong>
+        <strong>{t('courses.sidebar.browseSemesters')}</strong>
       </div>
       {currentYears.map(renderYear)}
-      {previousYears.length > 0 && <p className={styles.previousLabel}>Previous academic years</p>}
+      {previousYears.length > 0 && <p className={styles.previousLabel}>{t('courses.sidebar.previousAcademicYears')}</p>}
       {previousYears.map(renderYear)}
     </aside>
   );
 }
-

@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api, getApiErrorMessage, setDevAccessToken } from "../../api";
+import { useI18n, type TranslationKey } from "../../i18n";
 import { useAuth } from "../../store";
 import SiteHeader from "./SiteHeader";
 
-const demoAccounts = [
-  { label: "学生演示", username: "demo_student" },
-  { label: "教师演示", username: "demo_teacher" },
-  { label: "管理员演示", username: "demo_admin" },
+const demoAccounts: { labelKey: TranslationKey; username: string }[] = [
+  { labelKey: "auth.demo.student", username: "demo_student" },
+  { labelKey: "auth.demo.teacher", username: "demo_teacher" },
+  { labelKey: "auth.demo.admin", username: "demo_admin" },
 ];
 
 /**
@@ -17,6 +18,7 @@ const demoAccounts = [
 export default function AuthPage({ mode }: { mode: "login" | "register" }) {
   const navigate = useNavigate();
   const { user, login } = useAuth();
+  const { t } = useI18n();
   const cardRef = useRef<HTMLElement>(null);
   const sheenRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -89,7 +91,7 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (mode === "register" && password !== confirm) {
-      toast.error("两次密码不一致");
+      toast.error(t("auth.errors.passwordMismatch"));
       return;
     }
 
@@ -103,10 +105,10 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
         setDevAccessToken(data.access_token || null);
         useAuth.getState().setUser(data.user);
         navigate(data.user.role === "student" ? "/student" : data.user.role === "teacher" ? "/teacher" : "/admin");
-        toast.success("注册成功");
+        toast.success(t("auth.errors.registerSuccess"));
       }
     } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, "操作失败，请稍后重试"));
+      toast.error(getApiErrorMessage(error, t("auth.errors.actionFailed")));
     } finally {
       setLoading(false);
     }
@@ -126,16 +128,16 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
         <div className="auth-orb auth-orb-secondary" aria-hidden="true" />
 
         {isLogin && (
-          <section className="auth-hero" aria-label="平台介绍">
+          <section className="auth-hero" aria-label={t("auth.hero.ariaLabel")}>
             <p className="eyebrow">HKU · INTELLIGENT EDU</p>
             <h1>
-              <span className="hero-line">欢迎来到</span>
+              <span className="hero-line">{t("auth.hero.welcome")}</span>
               <span className="hero-line hero-line-glow">HKU Intelligent</span>
               <span className="hero-line">Education Platform</span>
             </h1>
             <p className="auth-hero-subtitle">
-              以 AI 驱动学习体验，连接教师、学生与管理者。
-              <br />登录后继续你的智能学习旅程。
+              {t("auth.hero.subtitle")}
+              <br />{t("auth.hero.continueHint")}
             </p>
           </section>
         )}
@@ -161,8 +163,8 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
               <div className="auth-header-icon" aria-hidden="true">
                 <i className={`fas ${isLogin ? "fa-user-circle" : "fa-user-plus"}`} />
               </div>
-              <h2>{isLogin ? "欢迎回来" : "加入 HKU 平台"}</h2>
-              <p>{isLogin ? "登录你的校园教学空间" : "开启你的智能学习旅程"}</p>
+              <h2>{isLogin ? t("auth.login.title") : t("auth.register.title")}</h2>
+              <p>{isLogin ? t("auth.login.subtitle") : t("auth.register.subtitle")}</p>
             </div>
 
             <form className="auth-form" onSubmit={submit}>
@@ -170,7 +172,7 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
                 <div className="auth-input-group">
                   <div className="auth-input-icon"><i className="fas fa-id-card" aria-hidden="true" /></div>
                   <input id="name" type="text" placeholder=" " value={name} onChange={handleInputChange(setName)} />
-                  <label htmlFor="name">姓名</label>
+                  <label htmlFor="name">{t("auth.form.name")}</label>
                 </div>
               )}
 
@@ -178,56 +180,56 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
                 <div className="auth-input-group">
                   <div className="auth-input-icon"><i className="fas fa-envelope" aria-hidden="true" /></div>
                   <input id="email" type="email" required placeholder=" " value={email} onChange={handleInputChange(setEmail)} />
-                  <label htmlFor="email">邮箱</label>
+                  <label htmlFor="email">{t("auth.form.email")}</label>
                 </div>
               )}
 
               <div className="auth-input-group">
                 <div className="auth-input-icon"><i className="fas fa-user" aria-hidden="true" /></div>
                 <input id="username" type="text" required placeholder=" " autoComplete="username" value={username} onChange={handleInputChange(setUsername)} />
-                <label htmlFor="username">用户名或邮箱</label>
+                <label htmlFor="username">{t("auth.form.username")}</label>
               </div>
 
               <div className="auth-input-group">
                 <div className="auth-input-icon"><i className="fas fa-lock" aria-hidden="true" /></div>
                 <input id="password" type={showPassword ? "text" : "password"} required placeholder=" " autoComplete={isLogin ? "current-password" : "new-password"} value={password} onChange={handleInputChange(setPassword)} />
-                <button className="toggle-password" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>
+                <button className="toggle-password" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? t("auth.form.hidePassword") : t("auth.form.showPassword")}>
                   <i className={`fas ${showPassword ? "fa-eye-slash" : "fa-eye"}`} aria-hidden="true" />
                 </button>
-                <label htmlFor="password">密码</label>
+                <label htmlFor="password">{t("auth.form.password")}</label>
               </div>
 
               {!isLogin && (
                 <div className="auth-input-group">
                   <div className="auth-input-icon"><i className="fas fa-shield-alt" aria-hidden="true" /></div>
                   <input id="confirm-password" type={showConfirm ? "text" : "password"} required placeholder=" " autoComplete="new-password" value={confirm} onChange={handleInputChange(setConfirm)} />
-                  <button className="toggle-password" type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? "隐藏确认密码" : "显示确认密码"}>
+                  <button className="toggle-password" type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? t("auth.form.hideConfirmPassword") : t("auth.form.showConfirmPassword")}>
                     <i className={`fas ${showConfirm ? "fa-eye-slash" : "fa-eye"}`} aria-hidden="true" />
                   </button>
-                  <label htmlFor="confirm-password">确认密码</label>
+                  <label htmlFor="confirm-password">{t("auth.form.confirmPassword")}</label>
                 </div>
               )}
 
-              {isLogin && <div className="form-options"><span>安全登录 · HKU 校园空间</span></div>}
+              {isLogin && <div className="form-options"><span>{t("auth.form.secureLogin")}</span></div>}
 
               <button className={`auth-submit ${loading ? "is-loading" : ""}`} disabled={loading} type="submit">
-                {loading ? <><i className="fas fa-circle-notch fa-spin" aria-hidden="true" />处理中…</> : <><span>{isLogin ? "登录" : "创建账户"}</span><i className="fas fa-arrow-right" aria-hidden="true" /></>}
+                {loading ? <><i className="fas fa-circle-notch fa-spin" aria-hidden="true" />{t("auth.form.submitting")}</> : <><span>{isLogin ? t("auth.form.submitLogin") : t("auth.form.submitRegister")}</span><i className="fas fa-arrow-right" aria-hidden="true" /></>}
               </button>
             </form>
 
             {isLogin && import.meta.env.DEV && (
               <div className="demo-box">
-                <strong>本地演示账户</strong>
+                <strong>{t("auth.demo.heading")}</strong>
                 <div className="demo-buttons">
-                  {demoAccounts.map((account) => <button key={account.username} onClick={() => fillDemo(account)} type="button">{account.label}</button>)}
+                  {demoAccounts.map((account) => <button key={account.username} onClick={() => fillDemo(account)} type="button">{t(account.labelKey)}</button>)}
                 </div>
-                <small>密码统一为 123456</small>
+                <small>{t("auth.demo.passwordHint")}</small>
               </div>
             )}
 
             <p className="auth-footer">
-              {isLogin ? "还没有账户？" : "已有账户？"}
-              <Link to={isLogin ? "/register" : "/login"}>{isLogin ? "注册" : "登录"}</Link>
+              {isLogin ? t("auth.footer.noAccount") : t("auth.footer.haveAccount")}
+              <Link to={isLogin ? "/register" : "/login"}>{isLogin ? t("auth.footer.register") : t("auth.footer.login")}</Link>
             </p>
           </article>
         </section>

@@ -5,6 +5,7 @@
  * scheduling code agree on term boundaries.
  */
 import type { Course, CourseSemester } from '../../api';
+import { createTranslator, DEFAULT_LOCALE, formatDate, type Locale, type TranslationKey, type Translator } from '../../i18n';
 
 export type { CourseSemester } from '../../api';
 
@@ -14,13 +15,33 @@ export type { CourseSemester } from '../../api';
 export const COURSE_SEMESTERS: CourseSemester[] = ['semester_1', 'semester_2', 'summer'];
 
 /**
- * Human labels for each semester value.
+ * Translation keys for each semester value; resolve them with ``t`` (or
+ * {@link formatSemesterLabel}) so the label follows the active locale.
  */
-export const SEMESTER_LABELS: Record<CourseSemester, string> = {
-  semester_1: 'Semester 1',
-  semester_2: 'Semester 2',
-  summer: 'Summer Semester',
+export const SEMESTER_LABEL_KEYS: Record<CourseSemester, TranslationKey> = {
+  semester_1: 'courses.semester.semester1',
+  semester_2: 'courses.semester.semester2',
+  summer: 'courses.semester.summer',
 };
+
+/** Default translator kept for non-React unit tests (source language). */
+const defaultTranslator = createTranslator(DEFAULT_LOCALE);
+
+/** Weekday translation keys indexed by ISO weekday (1 = Monday). */
+const WEEKDAY_KEYS: TranslationKey[] = [
+  'common.weekdays.mon',
+  'common.weekdays.tue',
+  'common.weekdays.wed',
+  'common.weekdays.thu',
+  'common.weekdays.fri',
+  'common.weekdays.sat',
+  'common.weekdays.sun',
+];
+
+/** Translate a semester value into a display label. */
+export function formatSemesterLabel(semester: CourseSemester, t: Translator = defaultTranslator) {
+  return t(SEMESTER_LABEL_KEYS[semester]);
+}
 
 /**
  * Return the academic year that starts in September for a date.
@@ -66,26 +87,35 @@ export function getAcademicYears(courses: Course[], currentDate = new Date()) {
 }
 
 /**
- * Format a date range for the Chinese UI.
+ * Format a date range for the active locale.
  */
-export function formatDateRange(range: { start: Date; end: Date }) {
-  const formatter = new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' });
-  return `${formatter.format(range.start)} – ${formatter.format(range.end)}`;
+export function formatDateRange(range: { start: Date; end: Date }, locale: Locale = DEFAULT_LOCALE) {
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+  return `${formatDate(locale, range.start, options)} – ${formatDate(locale, range.end, options)}`;
+}
+
+/** Translate an ISO weekday, falling back to the raw number for bad data. */
+export function formatWeekdayLabel(weekday: number, t: Translator = defaultTranslator) {
+  const key = WEEKDAY_KEYS[weekday - 1];
+  return key ? t(key) : String(weekday);
 }
 
 /**
  * Join distinct room names, falling back to a placeholder.
+ *
+ * The list separator follows the locale: English uses a comma, Chinese uses
+ * the enumeration comma.
  */
-export function formatCourseLocations(schedules: Course['schedules']) {
+export function formatCourseLocations(schedules: Course['schedules'], t: Translator = defaultTranslator, locale: Locale = DEFAULT_LOCALE) {
+  const separator = locale === 'en' ? ', ' : '、';
   const locations = [...new Set(schedules.map((schedule) => schedule.room.trim()).filter(Boolean))];
-  return locations.length ? locations.join('、') : '待定教室';
+  return locations.length ? locations.join(separator) : t('common.roomTba');
 }
 
 /**
  * Render weekly meeting times as one line per schedule.
  */
-export function formatCourseTimes(schedules: Course['schedules']) {
-  if (!schedules.length) return '待定';
-  const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-  return schedules.map((schedule) => `${weekdays[schedule.weekday - 1] || `周${schedule.weekday}`} ${schedule.start_time}–${schedule.end_time}`).join('\n');
+export function formatCourseTimes(schedules: Course['schedules'], t: Translator = defaultTranslator) {
+  if (!schedules.length) return t('courses.common.tbd');
+  return schedules.map((schedule) => `${formatWeekdayLabel(schedule.weekday, t)} ${schedule.start_time}–${schedule.end_time}`).join('\n');
 }

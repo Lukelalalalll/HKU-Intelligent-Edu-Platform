@@ -1,0 +1,196 @@
+/* Header language switcher.
+   Scoped to the i18n component so the shared header stylesheet stays focused. */
+
+.language-selector {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.language-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  color: var(--text-sub);
+  background: var(--surface-overlay);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.language-trigger:hover {
+  color: var(--primary-color);
+  border-color: rgba(0, 123, 85, 0.3);
+  background: #eff8f3;
+  transform: translateY(-1px);
+}
+
+.language-trigger[aria-expanded="true"] {
+  color: var(--primary-dark);
+  border-color: rgba(0, 123, 85, 0.38);
+  background: #e8f5ee;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.language-trigger:focus-visible {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.language-icon {
+  font-size: 0.86rem;
+}
+
+.language-trigger-label {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.language-chevron {
+  font-size: 0.6rem;
+  opacity: 0.66;
+  transition: transform 0.2s ease;
+}
+
+.language-trigger[aria-expanded="true"] .language-chevron {
+  transform: rotate(180deg);
+}
+
+.language-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: 224px;
+  padding: 7px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
+  animation: language-menu-arrive 0.16s cubic-bezier(0.22, 0.8, 0.3, 1);
+  transform-origin: top right;
+}
+
+.language-menu::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: 22px;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  border-left: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fff;
+  transform: rotate(45deg);
+}
+
+.language-menu-heading {
+  margin: 5px 9px 7px;
+  color: #8aa196;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.language-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--text-main);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.language-option:hover,
+.language-option:focus-visible {
+  outline: none;
+  background: #eef8f2;
+}
+
+.language-option.is-selected {
+  color: var(--primary-dark);
+  background: #e6f5ed;
+}
+
+.language-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.language-option-label {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.language-option-hint {
+  overflow: hidden;
+  color: var(--text-sub);
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.language-check {
+  flex: 0 0 auto;
+  color: var(--primary-color);
+  font-size: 0.72rem;
+}
+
+@keyframes language-menu-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 680px) {
+  .language-trigger {
+    gap: 5px;
+    padding: 0 9px;
+    height: 34px;
+  }
+
+  .language-trigger-label {
+    max-width: 64px;
+    font-size: 0.76rem;
+  }
+
+  .language-menu {
+    width: 208px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-menu {
+    animation: none;
+  }
+
+  .language-trigger,
+  .language-chevron {
+    transition: none;
+  }
+}

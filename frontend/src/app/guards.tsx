@@ -4,6 +4,7 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import type { Role } from "../api";
+import { useI18n } from "../i18n";
 import { useAuth } from "../store";
 import Shell from "./components/Shell";
 
@@ -12,8 +13,9 @@ import Shell from "./components/Shell";
  */
 export function Protected() {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
   const location = useLocation();
-  if (loading) return <div className="loading-screen">正在恢复登录状态…</div>;
+  if (loading) return <div className="loading-screen">{t("common.app.restoringSession")}</div>;
   return user ? <Shell /> : <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
 }
 
@@ -33,4 +35,3 @@ export function HomeRoute() {
   const { user } = useAuth();
   return <Navigate to={user?.role === "student" ? "/student" : user?.role === "teacher" ? "/teacher" : "/admin"} replace />;
 }
-

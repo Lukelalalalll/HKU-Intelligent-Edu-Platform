@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, teacherVideoApi, type Course, type VideoGenerationJob } from "../api";
+import { useI18n } from "../i18n";
 import { queryKeys } from "../queryClient";
 
 /**
@@ -68,12 +69,13 @@ export function useVideoJobsQuery(id?: string) {
  * Cancel and retry mutations for one job; both patch the cached list.
  */
 export function useVideoJobActions(projectId: string, job?: VideoGenerationJob | null) {
+  const { t } = useI18n();
   const client = useQueryClient();
   const update = (data: VideoGenerationJob) => {
     client.setQueryData<VideoGenerationJob[]>(queryKeys.videoJobs(projectId), (jobs) => jobs?.map((item) => item.id === data.id ? data : item) ?? [data]);
   };
-  const cancel = useMutation({ mutationFn: () => job ? teacherVideoApi.cancelJob(projectId, job.id) : Promise.reject(new Error("没有可取消的任务")), onSuccess: ({ data }) => update(data) });
-  const retry = useMutation({ mutationFn: () => job ? teacherVideoApi.retryJob(projectId, job.id) : Promise.reject(new Error("没有可重试的任务")), onSuccess: ({ data }) => update(data) });
+  const cancel = useMutation({ mutationFn: () => job ? teacherVideoApi.cancelJob(projectId, job.id) : Promise.reject(new Error(t("aiVideo.jobs.nothingToCancel"))), onSuccess: ({ data }) => update(data) });
+  const retry = useMutation({ mutationFn: () => job ? teacherVideoApi.retryJob(projectId, job.id) : Promise.reject(new Error(t("aiVideo.jobs.nothingToRetry"))), onSuccess: ({ data }) => update(data) });
   return { cancel, retry };
 }
 

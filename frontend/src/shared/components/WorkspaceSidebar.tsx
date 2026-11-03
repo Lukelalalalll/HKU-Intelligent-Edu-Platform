@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import type { Role } from "../../api";
+import { useI18n } from "../../i18n";
 
 /**
  * Icon keys supported by the sidebar icon set.
@@ -75,14 +76,16 @@ export function SidebarIcon({ name }: { name: SidebarIconName }) {
  * Collapsible, role-filtered workspace navigation.
  */
 export default function WorkspaceSidebar({ userRole, links, collapsed, onToggle }: WorkspaceSidebarProps) {
+  const { t } = useI18n();
   const visibleLinks = links.filter((link) => userRole && link.roles.includes(userRole));
+  const toggleLabel = collapsed ? t("common.sidebar.expand") : t("common.sidebar.collapse");
   return (
     <aside className="workspace-sidebar" data-sidebar-mode={collapsed ? "collapsed" : "expanded"}>
-      <button className="sidebar-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
+      <button className="sidebar-toggle" type="button" onClick={onToggle} aria-label={toggleLabel} title={toggleLabel}>
         <SidebarIcon name={collapsed ? "expand" : "collapse"} />
-        <span className="nav-label">{collapsed ? "展开侧栏" : "收起侧栏"}</span>
+        <span className="nav-label">{toggleLabel}</span>
       </button>
-      <nav className="sidebar-nav" aria-label="工作台导航">
+      <nav className="sidebar-nav" aria-label={t("common.nav.workspaceNavigation")}>
         {visibleLinks.map((link) => (
           <NavLink key={link.to} to={link.to} end={link.end ?? (link.to === "/" || link.to === "/teacher")} title={link.label}>
             <SidebarIcon name={link.icon} />
@@ -91,9 +94,9 @@ export default function WorkspaceSidebar({ userRole, links, collapsed, onToggle 
         ))}
       </nav>
       <div className="sidebar-footer">
-        <NavLink to="/profile" end title="个人资料">
+        <NavLink to="/profile" end title={t("common.nav.profile")}>
           <SidebarIcon name="profile" />
-          <span className="nav-label">个人资料</span>
+          <span className="nav-label">{t("common.nav.profile")}</span>
         </NavLink>
       </div>
     </aside>

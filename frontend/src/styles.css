@@ -415,6 +415,33 @@ a { color: inherit; }
 @media (max-width: 760px) { .app-shell .dashboard-side { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .app-shell .workspace-sidebar { position: static; width: auto; flex-direction: row; align-items: center; overflow-x: auto; padding: 10px 12px; border-right: 0; border-bottom: 1px solid #deebe5; } .app-shell .sidebar-toggle { width: 42px; min-width: 42px; height: 42px; padding: 0; } .app-shell .sidebar-nav { display: flex; gap: 7px; } .app-shell .workspace-sidebar a { white-space: nowrap; } .app-shell .sidebar-footer { margin-top: 0; padding-top: 0; border-top: 0; } .app-shell .content, .app-shell.sidebar-collapsed .content { margin-left: 0; } .app-shell.sidebar-collapsed .workspace-sidebar { width: auto; padding: 10px 12px; } .app-shell.sidebar-collapsed .nav-label { display: inline; } .app-shell.sidebar-collapsed .workspace-sidebar a { justify-content: flex-start; gap: 12px; padding: 11px 13px; } }
 
+/* Overview dashboard: the timetable panel defines the grid height. On wide
+   screens the side cards are pinned to that height and each list scrolls
+   internally, so long "today" / "review" content can never stretch the page. */
+.side-panel { display: flex; flex-direction: column; min-height: 0; }
+/* Do NOT set scrollbar-width here: on macOS it turns the list scrollbar into an
+   overlay that floats above the text. The custom ::-webkit-scrollbar below
+   renders a classic bar that reserves its 8px gutter. The list also borrows
+   10px of the card's 20px right padding, so the bar keeps its own lane with a
+   clear gap from the text instead of hugging the last word. */
+.side-panel-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -10px; padding-right: 10px; }
+.side-panel-body:focus-visible { border-radius: 8px; outline: 2px solid rgba(0, 123, 85, .3); outline-offset: 3px; }
+.side-panel-body::-webkit-scrollbar { width: 8px; }
+.side-panel-body::-webkit-scrollbar-track { background: transparent; }
+.side-panel-body::-webkit-scrollbar-thumb { border-radius: 999px; background: #cfe2d8; }
+.side-panel-body::-webkit-scrollbar-thumb:hover { background: #a9c8b8; }
+/* Firefox (no ::-webkit-scrollbar support) uses an overlay scrollbar on macOS;
+   borrow 15px from the card padding so it never covers the list text. */
+@supports not selector(::-webkit-scrollbar) {
+  .side-panel-body { padding-right: 15px; margin-right: -15px; }
+}
+@media (min-width: 1201px) {
+  .dashboard-grid { position: relative; }
+  .app-shell .dashboard-side { position: absolute; inset: 0; grid-area: 1 / 2 / 2 / 3; }
+  .side-panel-body { scrollbar-gutter: stable; }
+  .side-panel-body > .empty-state { min-height: 100%; align-content: center; }
+}
+
 /* Keep critical navigation visuals independent from optional icon-font/CDN availability. */
 .workspace-sidebar .sidebar-icon { opacity: .96; }
 .workspace-sidebar a:focus-visible, .workspace-sidebar button:focus-visible { outline: 3px solid rgba(0, 123, 85, .28); outline-offset: 2px; }

@@ -1,11 +1,17 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { createTranslator, DEFAULT_LOCALE, useI18n, type TranslationKey, type Translator } from "../../i18n";
 
 /**
  * One rendered breadcrumb; ``href`` makes it a link unless it is the current page.
  */
 export type BreadcrumbItem = {
   label: string;
+  href?: string;
+};
+
+type BreadcrumbDescriptor = {
+  key: TranslationKey;
   href?: string;
 };
 
@@ -16,51 +22,76 @@ const normalizePath = (pathname: string) => {
 
 const segment = (value: string) => encodeURIComponent(decodeURIComponent(value));
 
-/**
- * Keeps breadcrumb semantics independent from the rendered header so route
- * coverage can be tested without mounting the whole application shell.
- */
-export function buildBreadcrumbs(pathname: string): BreadcrumbItem[] {
+const defaultTranslator = createTranslator(DEFAULT_LOCALE);
+
+/** Build the route hierarchy as translation keys so it stays locale-agnostic. */
+function describeBreadcrumbs(pathname: string): BreadcrumbDescriptor[] {
   const path = normalizePath(pathname);
 
   if (path === "/" || path === "/student" || path === "/teacher") {
-    return [{ label: "总览" }];
+    return [{ key: "common.breadcrumbs.overview" }];
   }
   if (path === "/courses") {
-    return [{ label: "课程" }];
+    return [{ key: "common.breadcrumbs.courses" }];
   }
   if (path.startsWith("/courses/")) {
     const [, , rawCourseId, child] = path.split("/");
     const courseHref = `/courses/${segment(rawCourseId || "")}`;
     if (child === "live") {
       return [
-        { label: "课程", href: "/courses" },
-        { label: "课程详情", href: courseHref },
-        { label: "直播课堂" },
+        { key: "common.breadcrumbs.courses", href: "/courses" },
+        { key: "common.breadcrumbs.courseDetail", href: courseHref },
+        { key: "common.breadcrumbs.liveClass" },
       ];
     }
-    return [{ label: "课程", href: "/courses" }, { label: "课程详情" }];
+    return [{ key: "common.breadcrumbs.courses", href: "/courses" }, { key: "common.breadcrumbs.courseDetail" }];
   }
   if (path === "/assignments") {
-    return [{ label: "作业" }];
+    return [{ key: "common.breadcrumbs.assignments" }];
   }
   if (path.startsWith("/assignments/") && path.endsWith("/grading")) {
-    return [{ label: "作业", href: "/assignments" }, { label: "作业批改" }];
+    return [{ key: "common.breadcrumbs.assignments", href: "/assignments" }, { key: "common.breadcrumbs.grading" }];
   }
   if (path === "/teacher/courseware-agent") {
-    return [{ label: "PPT Agent" }];
+    return [{ key: "common.breadcrumbs.coursewareAgent" }];
   }
   if (path.startsWith("/teacher/courseware-agent/")) {
-    return [{ label: "PPT Agent", href: "/teacher/courseware-agent" }, { label: "项目工作区" }];
+    return [{ key: "common.breadcrumbs.coursewareAgent", href: "/teacher/courseware-agent" }, { key: "common.breadcrumbs.projectWorkspace" }];
+  }
+  if (path === "/teacher/lesson-plan-agent") {
+    return [{ key: "common.breadcrumbs.lessonPlanAgent" }];
+  }
+  if (path.startsWith("/teacher/lesson-plan-agent/")) {
+    return [{ key: "common.breadcrumbs.lessonPlanAgent", href: "/teacher/lesson-plan-agent" }, { key: "common.breadcrumbs.projectWorkspace" }];
+  }
+  if (path === "/teacher/ai-video") {
+    return [{ key: "common.breadcrumbs.teachingVideo" }];
+  }
+  if (path.startsWith("/teacher/ai-video/")) {
+    return [{ key: "common.breadcrumbs.teachingVideo", href: "/teacher/ai-video" }, { key: "common.breadcrumbs.projectWorkspace" }];
+  }
+  if (path === "/courseware-agent") {
+    return [{ key: "common.breadcrumbs.aiLecturer" }];
   }
   if (path === "/admin") {
-    return [{ label: "管理后台" }];
+    return [{ key: "common.breadcrumbs.admin" }];
   }
   if (path === "/profile") {
-    return [{ label: "个人资料" }];
+    return [{ key: "common.breadcrumbs.profile" }];
   }
 
-  return [{ label: "总览", href: "/" }, { label: "当前页面" }];
+  return [{ key: "common.breadcrumbs.overview", href: "/" }, { key: "common.breadcrumbs.currentPage" }];
+}
+
+/**
+ * Keeps breadcrumb semantics independent from the rendered header so route
+ * coverage can be tested without mounting the whole application shell.
+ *
+ * @param pathname Route path to describe.
+ * @param t        Translator used to resolve labels; defaults to the source locale.
+ */
+export function buildBreadcrumbs(pathname: string, t: Translator = defaultTranslator): BreadcrumbItem[] {
+  return describeBreadcrumbs(pathname).map(({ key, href }) => ({ label: t(key), href }));
 }
 
 /**
@@ -68,10 +99,11 @@ export function buildBreadcrumbs(pathname: string): BreadcrumbItem[] {
  */
 export default function Breadcrumbs() {
   const { pathname } = useLocation();
-  const items = buildBreadcrumbs(pathname);
+  const { t } = useI18n();
+  const items = buildBreadcrumbs(pathname, t);
 
   return (
-    <nav className="breadcrumbs" aria-label="当前位置">
+    <nav className="breadcrumbs" aria-label={t("common.breadcrumbs.currentLocation")}>
       <ol>
         {items.map((item, index) => {
           const current = index === items.length - 1;

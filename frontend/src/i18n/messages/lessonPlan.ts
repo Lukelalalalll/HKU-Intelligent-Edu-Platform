@@ -1,0 +1,190 @@
+/**
+ * Copy for the lessonPlan surface.
+ *
+ * English is the canonical key shape: add every key to ``en`` first, then mirror
+ * it in ``zh-Hans`` (source language) and ``yue`` (written Cantonese). TypeScript
+ * enforces key parity at build time.
+ */
+const en = {
+  home: {
+    contextLabel: "Lesson plan workspace",
+    modelManaged: "Models are configured centrally by administrators",
+    titleLead: "Turn your teaching ideas",
+    titleAccent: "into a lesson plan that works.",
+    subtitle: "Describe the course topic, your students' level and the kind of practice you want. The agent first understands the brief, then helps you build clear, printable teaching material.",
+    promptPlaceholder: "e.g. An S4 physics lesson plan on Newton's second law, with tiered practice and answers",
+    charCount: {
+      one: "{count} character",
+      other: "{count} characters",
+    },
+    naturalLanguageHint: "Describe it in plain language",
+    create: "Start creating",
+    creating: "Creating…",
+    recentProjects: "Recent projects",
+    projectCount: {
+      one: "{count} project",
+      other: "{count} projects",
+    },
+    projectType: "Lesson plan",
+    pageCount: {
+      one: "{count} page",
+      other: "{count} pages",
+    },
+    emptyTitle: "Your projects will appear here",
+    emptyHint: "Start by describing your first teaching idea on the left.",
+    settingsTitle: "Workspace settings",
+    settingsDescription: "The AI provider and model are configured centrally by administrators.",
+    managedByPlatform: "Managed by the platform",
+  },
+  workspace: {
+    autoSave: "Auto-saved",
+    generatePdf: "Generate lesson plan PDF",
+    generating: "Generating…",
+    outlineTitle: "Page outline",
+    outlineEmpty: "The page outline appears after generation",
+    untitledPage: "Untitled page",
+    viewing: "Viewing",
+    clickToView: "Click to view the page",
+    chatTitle: "Refine the brief with the agent",
+    online: "Online",
+    you: "You",
+    welcomeTitle: "Start with your teaching goal",
+    welcomeBody: "Tell me who the students are, what they need to learn and what you want the lesson plan to cover.",
+    replyPlaceholder: "Reply to the agent to add more requirements…",
+    enterHint: "Enter to send · Shift + Enter for a new line",
+    adjustTitle: "Teacher controls",
+    adjustHeading: "Make every page fit your classroom",
+    adjustBody: "After generating the lesson plan, you can keep adjusting the page text, structure and visuals before exporting the final PDF.",
+    adjustEditContent: "Edit page content",
+    adjustDifficulty: "Adjust exercise difficulty",
+    adjustExportPdf: "Export a printable PDF",
+  },
+  toast: {
+    sendFailed: "Message failed to send. Please try again later.",
+    generated: "Generated. You can keep adjusting it.",
+  },
+};
+
+export type LessonPlanMessages = typeof en;
+
+const zhHans: LessonPlanMessages = {
+  home: {
+    contextLabel: "学案工作台",
+    modelManaged: "模型由管理员统一配置",
+    titleLead: "把教学想法，",
+    titleAccent: "变成一份好学案。",
+    subtitle: "描述课程主题、学生水平和你想要的练习类型，Agent 会先理解需求，再帮你搭建一份清晰、可打印的教学材料。",
+    promptPlaceholder: "例如：高一物理牛顿第二定律学案，包含分层练习和答案",
+    charCount: {
+      one: "{count} 字",
+      other: "{count} 字",
+    },
+    naturalLanguageHint: "支持自然语言描述",
+    create: "开始创建",
+    creating: "创建中…",
+    recentProjects: "最近项目",
+    projectCount: {
+      one: "{count} 个项目",
+      other: "{count} 个项目",
+    },
+    projectType: "学案",
+    pageCount: {
+      one: "{count} 页",
+      other: "{count} 页",
+    },
+    emptyTitle: "你的项目会出现在这里",
+    emptyHint: "从左侧描述第一个教学想法开始。",
+    settingsTitle: "业务配置",
+    settingsDescription: "AI Provider 与模型由管理员统一配置。",
+    managedByPlatform: "平台统一管理",
+  },
+  workspace: {
+    autoSave: "自动保存",
+    generatePdf: "生成学案 PDF",
+    generating: "生成中…",
+    outlineTitle: "页面大纲",
+    outlineEmpty: "生成后会显示页面大纲",
+    untitledPage: "未命名页面",
+    viewing: "正在查看",
+    clickToView: "点击查看页面",
+    chatTitle: "和 Agent 一起完善需求",
+    online: "在线",
+    you: "你",
+    welcomeTitle: "从你的教学目标开始",
+    welcomeBody: "告诉我学生是谁、要学会什么，以及你希望学案包含哪些内容。",
+    replyPlaceholder: "回复 Agent，继续补充你的要求…",
+    enterHint: "Enter 发送 · Shift + Enter 换行",
+    adjustTitle: "教师调整",
+    adjustHeading: "让每一页更贴合你的课堂",
+    adjustBody: "生成学案后，你可以继续调整页面文字、结构与视觉内容，再导出最终 PDF。",
+    adjustEditContent: "编辑页面内容",
+    adjustDifficulty: "调整练习难度",
+    adjustExportPdf: "导出可打印 PDF",
+  },
+  toast: {
+    sendFailed: "消息发送失败，请稍后重试",
+    generated: "已生成，请继续调整",
+  },
+};
+
+const yue: LessonPlanMessages = {
+  home: {
+    contextLabel: "學案工作台",
+    modelManaged: "模型由管理員統一設定",
+    titleLead: "將教學諗法，",
+    titleAccent: "變成一份好用嘅學案。",
+    subtitle: "講吓課程主題、學生程度同你想要嘅練習類型，Agent 會先理解你嘅需要，再幫你搭一份清晰、可以打印嘅教學材料。",
+    promptPlaceholder: "例如：中四物理牛頓第二定律學案，包含分層練習同答案",
+    charCount: {
+      one: "{count} 字",
+      other: "{count} 字",
+    },
+    naturalLanguageHint: "支援自然語言描述",
+    create: "開始建立",
+    creating: "建立緊…",
+    recentProjects: "最近項目",
+    projectCount: {
+      one: "{count} 個項目",
+      other: "{count} 個項目",
+    },
+    projectType: "學案",
+    pageCount: {
+      one: "{count} 頁",
+      other: "{count} 頁",
+    },
+    emptyTitle: "你嘅項目會出現喺呢度",
+    emptyHint: "喺左邊開始描述你第一個教學諗法。",
+    settingsTitle: "業務設定",
+    settingsDescription: "AI Provider 同模型由管理員統一設定。",
+    managedByPlatform: "平台統一管理",
+  },
+  workspace: {
+    autoSave: "自動儲存",
+    generatePdf: "生成學案 PDF",
+    generating: "生成緊…",
+    outlineTitle: "頁面大綱",
+    outlineEmpty: "生成之後會顯示頁面大綱",
+    untitledPage: "未命名頁面",
+    viewing: "正在睇",
+    clickToView: "撳吓睇頁面",
+    chatTitle: "同 Agent 一齊完善需求",
+    online: "在線",
+    you: "你",
+    welcomeTitle: "由你嘅教學目標開始",
+    welcomeBody: "話俾我知學生係邊個、要學識啲咩，同埋你想學案包含啲咩內容。",
+    replyPlaceholder: "回覆 Agent，繼續補充你嘅要求…",
+    enterHint: "Enter 發送 · Shift + Enter 換行",
+    adjustTitle: "教師調整",
+    adjustHeading: "令每一頁更貼合你嘅課堂",
+    adjustBody: "生成學案之後，你可以繼續調整頁面文字、結構同視覺內容，再匯出最終 PDF。",
+    adjustEditContent: "編輯頁面內容",
+    adjustDifficulty: "調整練習難度",
+    adjustExportPdf: "匯出可打印 PDF",
+  },
+  toast: {
+    sendFailed: "訊息發送失敗，請遲啲再試。",
+    generated: "生成咗喇，請繼續調整。",
+  },
+};
+
+export const lessonPlan = { en, "zh-Hans": zhHans, yue };

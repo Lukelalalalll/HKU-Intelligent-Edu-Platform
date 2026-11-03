@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pptApi, type PptGenerationJob } from "../api";
+import { useI18n } from "../i18n";
 
 /**
  * Job states that stop the studio progress bar.
@@ -14,6 +15,7 @@ const TERMINAL = new Set(["completed", "completed_with_errors", "failed", "cance
  */
 export function usePptGeneration(options: { projectId?: string; pageCount: number; onComplete?: () => void | Promise<void> }) {
   const { projectId, pageCount, onComplete } = options;
+  const { t } = useI18n();
   const projectRef = useRef(projectId);
   const onCompleteRef = useRef(onComplete);
   const sourceRef = useRef<EventSource | null>(null);
@@ -35,13 +37,13 @@ export function usePptGeneration(options: { projectId?: string; pageCount: numbe
   }, []);
 
   const finish = useCallback(async (job: PptGenerationJob) => {
-    if (job.status === "failed" || job.status === "cancelled") setError(job.error_message || "智能排版失败，请重试");
+    if (job.status === "failed" || job.status === "cancelled") setError(job.error_message || t("coursewareAgent.generation.failedRetry"));
     if (job.status === "completed" || job.status === "completed_with_errors") {
       setProgress(100);
       await onCompleteRef.current?.();
     }
     stop();
-  }, [stop]);
+  }, [stop, t]);
 
   const generate = useCallback(async () => {
     const id = projectRef.current;
@@ -65,7 +67,7 @@ export function usePptGeneration(options: { projectId?: string; pageCount: numbe
         }
         if (payload.event_type === "planner.completed") setProgress((current) => Math.max(current, 15));
         if (payload.event_type === "generation.completed") { setProgress(100); void finish({ id: String(body.job_id || jobRef.current || ""), project_id: id, status: "completed", stage: "complete", total_pages: total, completed_pages: total, failed_pages: 0 }); }
-        if (payload.event_type === "generation.failed") void finish({ id: String(body.job_id || jobRef.current || ""), project_id: id, status: "failed", stage: "failed", total_pages: total, completed_pages: 0, failed_pages: 1, error_message: typeof body.error === "string" ? body.error : "智能排版失败" });
+        if (payload.event_type === "generation.failed") void finish({ id: String(body.job_id || jobRef.current || ""), project_id: id, status: "failed", stage: "failed", total_pages: total, completed_pages: 0, failed_pages: 1, error_message: typeof body.error === "string" ? body.error : t("coursewareAgent.generation.failed") });
       } catch { /* malformed events are ignored; polling remains authoritative */ }
     };
     try {
@@ -79,10 +81,10 @@ export function usePptGeneration(options: { projectId?: string; pageCount: numbe
         }).catch(() => undefined);
       }, 3_000);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "智能排版失败，请重试");
+      setError(requestError instanceof Error ? requestError.message : t("coursewareAgent.generation.failedRetry"));
       stop();
     }
-  }, [finish, pageCount, running, stop]);
+  }, [finish, pageCount, running, stop, t]);
 
   useEffect(() => () => stop(), [projectId, stop]);
   return { running, progress, error, generate, cancel: stop };

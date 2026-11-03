@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo } from 'react';
 import { useAuth } from '../../../store';
+import { useI18n } from '../../../i18n';
 import { useCoursesQuery } from '../../../hooks/useCourseQueries';
 import SemesterSidebar from '../components/SemesterSidebar';
 import CourseGrid from '../components/CourseGrid';
 import {
   academicYearStartFor,
   formatAcademicYear,
+  formatSemesterLabel,
   getAcademicYears,
-  SEMESTER_LABELS,
   semesterFor,
   type CourseSemester,
 } from '../courseTerms';
@@ -18,6 +19,7 @@ import styles from '../styles/CoursesRoute.module.css';
  */
 export default function CoursesRoute() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const coursesQuery = useCoursesQuery();
   const courses = coursesQuery.data ?? [];
   const [currentDate, setCurrentDate] = React.useState(() => new Date());
@@ -56,21 +58,20 @@ export default function CoursesRoute() {
   return (
     <div className={styles.page}>
       <header className={styles.pageHeading}>
-        <div><p className="eyebrow">ACADEMIC</p><h1>{user?.role === 'teacher' ? '我的课程' : '课程'}</h1><p className="muted">按 academic year 和 semester 浏览你的课程记录。</p></div>
+        <div><p className="eyebrow">ACADEMIC</p><h1>{t(user?.role === 'teacher' ? 'common.nav.myCourses' : 'common.nav.courses')}</h1><p className="muted">{t('courses.route.subtitle')}</p></div>
       </header>
       <div className={styles.layout}>
         <SemesterSidebar courses={courses} years={years} selectedYear={selectedYear} selectedSemester={selectedSemester} currentYear={currentYear} currentSemester={currentSemester} onSelect={selectTerm} />
         <main className={styles.main}>
           <div className={styles.toolbar}>
-            <div><h2>{query.trim() ? '搜索结果' : `${formatAcademicYear(selectedYear)} · ${SEMESTER_LABELS[selectedSemester]}`}</h2><span>{selectedCourses.length} 门课程</span></div>
-            <label className={styles.search}><i className="fas fa-search" aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程、代码或教师" aria-label="搜索课程、代码或教师" /></label>
+            <div><h2>{query.trim() ? t('courses.route.searchResults') : `${formatAcademicYear(selectedYear)} · ${formatSemesterLabel(selectedSemester, t)}`}</h2><span>{t(selectedCourses.length === 1 ? 'courses.route.courseCount.one' : 'courses.route.courseCount.other', { count: selectedCourses.length })}</span></div>
+            <label className={styles.search}><i className="fas fa-search" aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('courses.route.searchPlaceholder')} aria-label={t('courses.route.searchPlaceholder')} /></label>
           </div>
-          {loading && <div className={styles.state}><i className="fas fa-circle-notch fa-spin" />正在加载课程…</div>}
-          {error && <div className={styles.state}><i className="fas fa-circle-exclamation" />暂时无法加载课程，请稍后重试。</div>}
+          {loading && <div className={styles.state}><i className="fas fa-circle-notch fa-spin" />{t('courses.route.loading')}</div>}
+          {error && <div className={styles.state}><i className="fas fa-circle-exclamation" />{t('courses.route.loadError')}</div>}
           {!loading && !error && <CourseGrid courses={selectedCourses} searching={Boolean(query.trim())} />}
         </main>
       </div>
     </div>
   );
 }
-

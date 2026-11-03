@@ -8,6 +8,7 @@
 export { api, getDevAccessToken, setDevAccessToken, DEV_SESSION_STORAGE_KEY, consumeSse, createStreamHeaders, getApiErrorMessage, isApiError } from "./lib/apiClient";
 export type { ApiError, SseEvent } from "./lib/apiClient";
 import { api, consumeSse, createStreamHeaders } from "./lib/apiClient";
+import { translate } from "./i18n/translate";
 /**
  * Roles understood by routing guards and API payloads.
  */
@@ -268,7 +269,7 @@ export const studentApi = {
   dashboard: () => api.get<StudentDashboardData>("/student/dashboard"),
   coursewareQuery: (payload: { question: string; course_id?: string; conversation_id?: string; attachment_ids?: string[] }) => api.post<CoursewareQuery>("/courseware-agent/query", payload),
   coursewareConversations: () => api.get<AgentConversation[]>("/courseware-agent/conversations"),
-  createCoursewareConversation: (title = "新对话") => api.post<AgentConversation>("/courseware-agent/conversations", { title }),
+  createCoursewareConversation: (title: string) => api.post<AgentConversation>("/courseware-agent/conversations", { title }),
   coursewareConversation: (id: string) => api.get<AgentConversation & { messages: AgentMessage[] }>(`/courseware-agent/conversations/${id}`),
   deleteCoursewareConversation: (id: string) => api.delete(`/courseware-agent/conversations/${id}`),
   appendCoursewareMessage: (id: string, payload: { role: "user" | "assistant"; content: string; citations?: unknown[]; model?: string | null; attachment_ids?: string[] }) => api.post(`/courseware-agent/conversations/${id}/messages`, payload),
@@ -288,7 +289,7 @@ export const pptApi = {
   streamRequirementChat: async (id: string, payload: { content?: string; option_id?: string; option_label?: string; bootstrap?: boolean }, handlers: { onEvent?: (event: PptChatStreamEvent) => void } = {}, signal?: AbortSignal) => {
     const response = await fetch(`/api/ppt/projects/${id}/requirements/chat/stream`, { method: "POST", headers: createStreamHeaders("application/json"), credentials: "include", body: JSON.stringify(payload), signal });
     let complete: PptChatStreamEvent | undefined;
-    await consumeSse<PptChatStreamEvent>(response, (event) => { handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || "需求访谈失败"); }, signal);
+    await consumeSse<PptChatStreamEvent>(response, (event) => { handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || translate("errors.requirementInterviewFailed")); }, signal);
     return complete;
   },
   generateRequirements: (id: string) => api.post(`/ppt/projects/${id}/requirements:generate`),
@@ -322,7 +323,7 @@ export const pptApi = {
   streamMessage: async (id: string, payload: { content: string; page_id?: string; ui_surface?: string }, handlers: { onEvent?: (event: PptChatStreamEvent) => void } = {}, signal?: AbortSignal) => {
     const response = await fetch(`/api/ppt/projects/${id}/messages/stream`, { method: "POST", headers: createStreamHeaders("application/json"), credentials: "include", body: JSON.stringify(payload), signal });
     let complete: PptChatStreamEvent | undefined;
-    await consumeSse<PptChatStreamEvent>(response, (event) => { handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || "Agent 执行失败"); }, signal);
+    await consumeSse<PptChatStreamEvent>(response, (event) => { handlers.onEvent?.(event); if (event.type === "complete") complete = event; if (event.type === "error") throw new Error(event.detail || translate("errors.agentExecutionFailed")); }, signal);
     return complete;
   },
   sources: (id: string) => api.get<{ items: PptSource[] }>(`/ppt/projects/${id}/sources`),

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { PptDocument, PptPage, PptSlideElement } from "../api";
+import { translate, useI18n } from "../i18n";
 
 /**
  * Logical slide width; element coordinates are percentages of it.
@@ -28,7 +29,7 @@ export const defaultDocument = (page: PptPage): PptDocument => {
     layout: page.document?.layout || "title-content",
     theme: { ...theme, background: themeBackground(page.document) },
     elements: [
-      { id: "title", type: "title", x: 7, y: 8, w: 86, h: 14, text: page.title || "未命名页面", font_size: 34, color: String(theme.title || "#0b6248"), font_weight: 800 },
+      { id: "title", type: "title", x: 7, y: 8, w: 86, h: 14, text: page.title || translate("courseware.slide.untitledPage"), font_size: 34, color: String(theme.title || "#0b6248"), font_weight: 800 },
       ...page.bullets.slice(0, 6).map((text, index) => ({
         id: `bullet-${index}`,
         type: "body",
@@ -81,6 +82,7 @@ export function SlideRenderer({
   onTextBlur,
   onResizeStart,
 }: SlideRendererProps) {
+  const { t } = useI18n();
   return (
     <div className={`ppt-slide-renderer ${className}`} style={{ background: themeBackground(document) }} onPointerDown={() => onBackgroundPointerDown?.()}>
       {document.elements.map((element) => {
@@ -126,14 +128,14 @@ export function SlideRenderer({
               if (editable && !isShape && !isImage) onTextBlur?.(element, event.currentTarget.textContent || "");
             }}
           >
-            {isImage && element.src ? <img src={element.src} alt={element.alt || "课件图片"} draggable={false} /> : isImage ? <span className="ppt-slide-image-placeholder">图片</span> : isShape ? null : text}
+            {isImage && element.src ? <img src={element.src} alt={element.alt || t("courseware.slide.imageAlt")} draggable={false} /> : isImage ? <span className="ppt-slide-image-placeholder">{t("courseware.slide.imagePlaceholder")}</span> : isShape ? null : text}
             {editable && selectedId === element.id && onResizeStart ? (
-              <button className="ppt-resize-handle" type="button" aria-label="调整大小" onPointerDown={(event) => onResizeStart(event, element)} />
+              <button className="ppt-resize-handle" type="button" aria-label={t("courseware.slide.resize")} onPointerDown={(event) => onResizeStart(event, element)} />
             ) : null}
           </div>
         );
       })}
-      {!document.elements.length && <div className="ppt-slide-empty">等待 Agent 生成设计稿</div>}
+      {!document.elements.length && <div className="ppt-slide-empty">{t("courseware.slide.empty")}</div>}
     </div>
   );
 }
@@ -142,6 +144,7 @@ export function SlideRenderer({
  * Scaled read-only slide thumbnail for the page list.
  */
 export function SlideThumbnail({ page, selected, onClick }: { page: PptPage; selected: boolean; onClick: () => void }) {
+  const { t } = useI18n();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.15);
   useEffect(() => {
@@ -158,7 +161,7 @@ export function SlideThumbnail({ page, selected, onClick }: { page: PptPage; sel
       <div className="ppt-thumbnail-viewport" ref={viewportRef}>
         <div className="ppt-thumbnail-scale" style={{ width: SLIDE_WIDTH, height: SLIDE_HEIGHT, transform: `scale(${scale})` }}><SlideRenderer document={editableDocument(page)} /></div>
       </div>
-      <strong title={page.title}>{page.title || "未命名页面"}</strong>
+      <strong title={page.title}>{page.title || t("courseware.slide.untitledPage")}</strong>
     </button>
   );
 }
