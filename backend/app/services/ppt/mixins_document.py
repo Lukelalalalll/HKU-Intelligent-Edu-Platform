@@ -3,6 +3,7 @@
 from .context import *  # noqa: F401,F403
 
 class _DocumentMixin:
+    @staticmethod
     def _remote_image_asset(url: str, page: PptPage, index: int) -> dict[str, Any] | None:
         """Return a browser-renderable fallback after local caching fails.
 
