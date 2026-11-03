@@ -1,3 +1,5 @@
+"""AI provider registry and per-business bindings."""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -8,10 +10,16 @@ from app.db.session import Base
 
 
 def now_utc() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
 class AiProvider(Base):
+    """Configured OpenAI-compatible provider.
+
+    ``api_key_encrypted`` holds the encrypted key; ``capabilities_json``
+    records which features the provider supports.
+    """
     __tablename__ = "ai_providers"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
@@ -29,6 +37,11 @@ class AiProvider(Base):
 
 
 class AiBusinessBinding(Base):
+    """One business code bound to a provider and model.
+
+    Unique per ``business_code``; a null provider lets the gateway fall back
+    to the environment template.
+    """
     __tablename__ = "ai_business_bindings"
     __table_args__ = (UniqueConstraint("business_code", name="uq_ai_business_binding_code"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))

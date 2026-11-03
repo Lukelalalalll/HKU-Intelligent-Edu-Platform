@@ -1,3 +1,5 @@
+"""Request and response schemas for teacher video projects."""
+
 from datetime import datetime
 from typing import Any, Literal
 
@@ -5,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class VideoProjectCreate(BaseModel):
+    """Project creation payload with feature toggles."""
     title: str = Field(default="未命名教学视频", min_length=1, max_length=200)
     course_id: str | None = None
     description: str = Field(default="", max_length=10000)
@@ -21,6 +24,7 @@ class VideoProjectCreate(BaseModel):
 
 
 class VideoProjectPatch(BaseModel):
+    """Partial project update; only supplied fields change."""
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=10000)
     input_text: str | None = Field(default=None, max_length=100000)
@@ -36,6 +40,7 @@ class VideoProjectPatch(BaseModel):
 
 
 class VideoSourceCreate(BaseModel):
+    """Source payload: text or an owned file asset."""
     file_asset_id: str | None = None
     source_type: str = Field(default="text", max_length=30)
     title: str = Field(default="讲稿", max_length=255)
@@ -44,10 +49,12 @@ class VideoSourceCreate(BaseModel):
 
 
 class VideoGenerateIn(BaseModel):
+    """Generation request with an optional idempotency key."""
     idempotency_key: str | None = Field(default=None, max_length=255)
 
 
 class VideoScenePatch(BaseModel):
+    """Partial scene update."""
     title: str | None = Field(default=None, max_length=200)
     narration: str | None = Field(default=None, max_length=50000)
     onscreen_text: str | None = Field(default=None, max_length=10000)
@@ -56,25 +63,30 @@ class VideoScenePatch(BaseModel):
 
 
 class VideoOut(BaseModel):
+    """Serialized video project."""
     model_config = ConfigDict(from_attributes=True)
     id: str; owner_id: str; course_id: str | None; title: str; description: str; provider: str; status: str; language: str; duration_seconds: int; style: str; input_text: str; config_json: dict; created_at: datetime; updated_at: datetime
 
 
 class VideoSourceOut(BaseModel):
+    """Serialized video source."""
     model_config = ConfigDict(from_attributes=True)
     id: str; project_id: str; file_asset_id: str | None; source_type: str; title: str; extracted_text: str; metadata_json: dict; created_at: datetime
 
 
 class VideoSceneOut(BaseModel):
+    """Serialized scene."""
     model_config = ConfigDict(from_attributes=True)
     id: str; project_id: str; order_index: int; title: str; narration: str; onscreen_text: str; visual_prompt: str; duration_seconds: int; status: str; metadata_json: dict
 
 
 class VideoJobOut(BaseModel):
+    """Serialized generation job."""
     model_config = ConfigDict(from_attributes=True)
     id: str; project_id: str; owner_id: str; provider: str; provider_job_id: str | None; status: str; stage: str; progress: int; current_scene: int; total_scenes: int; result_json: dict; error_message: str | None; idempotency_key: str; created_at: datetime; started_at: datetime | None; completed_at: datetime | None
 
 
 class VideoAssetOut(BaseModel):
+    """Serialized rendered asset."""
     model_config = ConfigDict(from_attributes=True)
     id: str; project_id: str; job_id: str; asset_type: str; storage_key: str; public_url: str | None; mime_type: str; size_bytes: int; metadata_json: dict; created_at: datetime

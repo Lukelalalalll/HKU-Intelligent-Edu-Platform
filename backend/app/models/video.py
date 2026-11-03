@@ -1,3 +1,5 @@
+"""Teaching video tables: projects, sources, scenes, jobs and assets."""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -8,10 +10,16 @@ from app.db.session import Base
 
 
 def utcnow() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
 class VideoProject(Base):
+    """Video project owned by one teacher.
+
+    ``provider`` selects the renderer (``coze`` or ``local``);
+    ``config_json`` holds learning objectives and feature toggles.
+    """
     __tablename__ = "video_projects"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -35,6 +43,7 @@ class VideoProject(Base):
 
 
 class VideoSource(Base):
+    """Text or file source of a video project."""
     __tablename__ = "video_sources"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id", ondelete="CASCADE"), index=True)
@@ -48,6 +57,7 @@ class VideoSource(Base):
 
 
 class VideoScene(Base):
+    """One scene of the generated script; order is unique per project."""
     __tablename__ = "video_scenes"
     __table_args__ = (UniqueConstraint("project_id", "order_index", name="uq_video_scene_order"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -64,6 +74,11 @@ class VideoScene(Base):
 
 
 class VideoGenerationJob(Base):
+    """Generation job with a per-owner idempotency key.
+
+    ``status`` follows the provider pipeline; ``provider_job_id`` links the row
+    to the remote run and ``queue_task_id`` to the outbox task.
+    """
     __tablename__ = "video_generation_jobs"
     __table_args__ = (UniqueConstraint("owner_id", "idempotency_key", name="uq_video_job_owner_idempotency"), Index("ix_video_jobs_project_created", "project_id", "created_at"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -89,6 +104,7 @@ class VideoGenerationJob(Base):
 
 
 class VideoAsset(Base):
+    """Rendered or provider-hosted artifact of one job."""
     __tablename__ = "video_assets"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("video_projects.id", ondelete="CASCADE"), index=True)

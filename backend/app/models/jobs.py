@@ -1,3 +1,5 @@
+"""Durable task outbox table shared by every background job."""
+
 from datetime import datetime
 from uuid import uuid4
 

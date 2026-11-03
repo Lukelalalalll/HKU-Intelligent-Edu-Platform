@@ -1,3 +1,5 @@
+"""Lesson plan tables: projects, A4 pages, assets, events and export jobs."""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -8,10 +10,16 @@ from app.db.session import Base
 
 
 def now_utc() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
 class LessonPlanProject(Base):
+    """Lesson plan project owned by one teacher.
+
+    Page documents use an A4 canvas (794x1123 at 96 dpi); children cascade
+    with the project.
+    """
     __tablename__ = "lesson_plan_projects"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -33,6 +41,7 @@ class LessonPlanProject(Base):
 
 
 class LessonPlanPage(Base):
+    """One A4 page document with a monotonic revision counter."""
     __tablename__ = "lesson_plan_pages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("lesson_plan_projects.id", ondelete="CASCADE"), index=True)
@@ -46,6 +55,7 @@ class LessonPlanPage(Base):
 
 
 class LessonPlanAsset(Base):
+    """Uploaded asset of a lesson plan project."""
     __tablename__ = "lesson_plan_assets"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("lesson_plan_projects.id", ondelete="CASCADE"), index=True)
@@ -58,6 +68,7 @@ class LessonPlanAsset(Base):
 
 
 class LessonPlanEvent(Base):
+    """Append-only event consumed by the lesson plan SSE stream."""
     __tablename__ = "lesson_plan_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("lesson_plan_projects.id", ondelete="CASCADE"), index=True)
@@ -68,6 +79,7 @@ class LessonPlanEvent(Base):
 
 
 class LessonPlanExportJob(Base):
+    """PDF export job; paths are set when rendering finishes."""
     __tablename__ = "lesson_plan_export_jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("lesson_plan_projects.id", ondelete="CASCADE"), index=True)

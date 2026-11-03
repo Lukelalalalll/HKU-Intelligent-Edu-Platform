@@ -1,3 +1,9 @@
+"""PPT domain tables: projects, pages, documents, research and jobs.
+
+Page content is stored as JSON documents on a 1280x720 logical canvas; the
+related rows keep history, events and job progress for the studio UI.
+"""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -8,10 +14,16 @@ from app.db.session import Base
 
 
 def now_utc() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
 class PptProject(Base):
+    """Deck project owned by one teacher.
+
+    ``layout_assignments`` maps page id to layout id, ``theme_config`` keeps
+    the merged theme pack, and ``current_stage`` tracks the pipeline stage.
+    """
     __tablename__ = "ppt_projects"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -44,6 +56,7 @@ class PptProject(Base):
 
 
 class PptRequirement(Base):
+    """Interview state of one project; answers and questions are JSON."""
     __tablename__ = "ppt_requirements"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), unique=True, index=True)
@@ -56,6 +69,7 @@ class PptRequirement(Base):
 
 
 class PptOutlineVersion(Base):
+    """Immutable outline snapshot of a project."""
     __tablename__ = "ppt_outline_versions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -66,6 +80,12 @@ class PptOutlineVersion(Base):
 
 
 class PptPage(Base):
+    """One slide of a deck.
+
+    ``statuses_json`` tracks per-artifact state for outline, search, visual,
+    summary, draft and design; ``design_document_json`` is the v3 canvas
+    document used by the editor and the exporters.
+    """
     __tablename__ = "ppt_pages"
     __table_args__ = (UniqueConstraint("project_id", "sort_order", name="uq_ppt_page_order"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -93,6 +113,7 @@ class PptPage(Base):
 
 
 class PptMessage(Base):
+    """Conversation message of the project or page assistant."""
     __tablename__ = "ppt_messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -107,6 +128,7 @@ class PptMessage(Base):
 
 
 class PptCheckpoint(Base):
+    """Human confirmation gate in the generation pipeline."""
     __tablename__ = "ppt_checkpoints"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -121,6 +143,7 @@ class PptCheckpoint(Base):
 
 
 class PptDocumentVersion(Base):
+    """One historical document version of a page."""
     __tablename__ = "ppt_document_versions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -133,6 +156,7 @@ class PptDocumentVersion(Base):
 
 
 class PptEditorAsset(Base):
+    """Image asset uploaded for the canvas editor."""
     __tablename__ = "ppt_editor_assets"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -151,6 +175,7 @@ class PptEditorAsset(Base):
 
 
 class PptSourceCollection(Base):
+    """Source pool of a project or page."""
     __tablename__ = "ppt_source_collections"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -162,6 +187,7 @@ class PptSourceCollection(Base):
 
 
 class PptSourceDocument(Base):
+    """Source document with its extracted markdown."""
     __tablename__ = "ppt_source_documents"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     collection_id: Mapped[str] = mapped_column(ForeignKey("ppt_source_collections.id", ondelete="CASCADE"), index=True)
@@ -175,6 +201,7 @@ class PptSourceDocument(Base):
 
 
 class PptSourceChunk(Base):
+    """Chunk of a source document used as prompt context."""
     __tablename__ = "ppt_source_chunks"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     document_id: Mapped[str] = mapped_column(ForeignKey("ppt_source_documents.id", ondelete="CASCADE"), index=True)
@@ -185,6 +212,7 @@ class PptSourceChunk(Base):
 
 
 class PptAgentRun(Base):
+    """One assistant action run with its router decision."""
     __tablename__ = "ppt_agent_runs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -199,6 +227,11 @@ class PptAgentRun(Base):
 
 
 class PptAgentEvent(Base):
+    """Append-only event stream consumed by the SSE endpoints.
+
+    ``event_type`` ends with a short name such as ``completed`` or ``failed``
+    that clients receive as the SSE event name.
+    """
     __tablename__ = "ppt_agent_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -210,6 +243,7 @@ class PptAgentEvent(Base):
 
 
 class PptProviderConfig(Base):
+    """Per-teacher provider override; the API key is encrypted."""
     __tablename__ = "ppt_provider_configs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
@@ -222,6 +256,7 @@ class PptProviderConfig(Base):
 
 
 class PptExportJob(Base):
+    """PPTX export job; ``file_path`` is set once rendering completes."""
     __tablename__ = "ppt_export_jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)
@@ -237,6 +272,11 @@ class PptExportJob(Base):
 
 
 class PptGenerationJob(Base):
+    """Background deck generation job.
+
+    ``queue_task_id`` links the row to the outbox task, and the page counters
+    drive the progress bar in the studio UI.
+    """
     __tablename__ = "ppt_generation_jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str] = mapped_column(ForeignKey("ppt_projects.id", ondelete="CASCADE"), index=True)

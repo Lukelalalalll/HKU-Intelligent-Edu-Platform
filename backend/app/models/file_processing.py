@@ -1,3 +1,5 @@
+"""Document processing tables: documents, jobs, pages, chunks and bindings."""
+
 from datetime import datetime
 from uuid import uuid4
 
@@ -9,6 +11,12 @@ from app.models.entities import utcnow
 
 
 class FileProcessingDocument(Base):
+    """Parsed document addressed by its content hash.
+
+    ``status`` moves ``queued`` -> ``processing`` -> ``ready``,
+    ``partial_ready`` or ``failed``; ``manifest_json`` records the parser
+    output summary.
+    """
     __tablename__ = "file_processing_documents"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     file_asset_id: Mapped[str | None] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), unique=True, index=True, nullable=True)
@@ -33,6 +41,11 @@ class FileProcessingDocument(Base):
 
 
 class FileProcessingJob(Base):
+    """Processing run of one document.
+
+    A partial unique index keeps at most one queued or running job per
+    document; ``attempts``/``max_attempts`` drive the retry policy.
+    """
     __tablename__ = "file_processing_jobs"
     __table_args__ = (
         Index("ix_file_processing_jobs_status_created", "status", "created_at"),
@@ -64,6 +77,7 @@ class FileProcessingJob(Base):
 
 
 class FileProcessingPage(Base):
+    """Normalized page payload produced by the parser."""
     __tablename__ = "file_processing_pages"
     __table_args__ = (UniqueConstraint("document_id", "page_number", name="uq_file_processing_page"),)
 
@@ -78,6 +92,12 @@ class FileProcessingPage(Base):
 
 
 class FileProcessingChunk(Base):
+    """Retrieval chunk of a document.
+
+    ``chunk_type`` is ``text``, ``heading``, ``image``, ``formula`` or
+    ``table``; ``metadata_json`` carries bbox, confidence and slide/sheet
+    anchors.
+    """
     __tablename__ = "file_processing_chunks"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     document_id: Mapped[str] = mapped_column(ForeignKey("file_processing_documents.id", ondelete="CASCADE"), index=True)
@@ -93,6 +113,11 @@ class FileProcessingChunk(Base):
 
 
 class FileContextBinding(Base):
+    """Business binding of a document, unique per target.
+
+    ``visibility`` is ``owner``, ``private`` or ``course`` and drives the
+    retrieval access checks.
+    """
     __tablename__ = "file_context_bindings"
     __table_args__ = (UniqueConstraint("document_id", "target_type", "target_id", name="uq_file_context_binding"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -109,6 +134,7 @@ class FileContextBinding(Base):
 
 
 class AgentMessageAttachment(Base):
+    """File attachment of one agent message."""
     __tablename__ = "agent_message_attachments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     message_id: Mapped[str] = mapped_column(ForeignKey("agent_messages.id", ondelete="CASCADE"), index=True)
@@ -118,6 +144,7 @@ class AgentMessageAttachment(Base):
 
 
 class SubmissionAttachment(Base):
+    """File attachment of a submission, ordered per submission."""
     __tablename__ = "submission_attachments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     submission_id: Mapped[str] = mapped_column(ForeignKey("submissions.id", ondelete="CASCADE"), index=True)

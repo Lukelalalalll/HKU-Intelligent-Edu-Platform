@@ -1,3 +1,10 @@
+"""Pre-split ORM entities for identity, courses, assignments and files.
+
+These tables predate the domain split.  Domain modules re-export them so new
+code imports from a stable surface; newer tables live in their own modules
+(``ppt``, ``file_processing``, ``video``, ``lesson_plan``).
+"""
+
 from datetime import datetime, timezone
 from enum import Enum
 import re
@@ -10,16 +17,19 @@ from app.db.session import Base
 
 
 def utcnow() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
 class UserRole(str, Enum):
+    """Roles that gate every authorization check."""
     teacher = "teacher"
     student = "student"
     admin = "admin"
 
 
 class User(Base):
+    """Account row with a password hash and one platform role."""
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
@@ -39,6 +49,11 @@ class User(Base):
 
 
 class Course(Base):
+    """Course owned by one teacher; the code is unique and normalized.
+
+    ``semester`` is constrained to ``semester_1``, ``semester_2`` or
+    ``summer`` by both a check constraint and the ``course_terms`` helpers.
+    """
     __tablename__ = "courses"
     __table_args__ = (
         CheckConstraint("semester IN ('semester_1', 'semester_2', 'summer')", name="ck_courses_semester"),
@@ -66,6 +81,7 @@ class Course(Base):
 
     @validates("code")
     def validate_code(self, key: str, value: str) -> str:
+        """Normalize the code and reject anything but 4 letters + 4 digits."""
         normalized = value.strip().upper()
         if not re.fullmatch(r"[A-Z]{4}[0-9]{4}", normalized):
             raise ValueError("Course code must contain 4 letters followed by 4 digits")
@@ -73,6 +89,7 @@ class Course(Base):
 
 
 class Enrollment(Base):
+    """Unique course membership of one student."""
     __tablename__ = "enrollments"
     __table_args__ = (UniqueConstraint("course_id", "student_id", name="uq_enrollment_course_student"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -85,6 +102,11 @@ class Enrollment(Base):
 
 
 class CourseSchedule(Base):
+    """Weekly meeting slot.
+
+    ``weekday`` is ISO 1-7 and the times are HH:MM strings in the schedule
+    timezone (falling back to the course timezone).
+    """
     __tablename__ = "course_schedules"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
@@ -98,6 +120,11 @@ class CourseSchedule(Base):
 
 
 class Assignment(Base):
+    """Assignment published for one course.
+
+    ``status`` is ``published`` for visible work; submissions reference the row
+    and inherit its ``max_score`` scale.
+    """
     __tablename__ = "assignments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
@@ -115,6 +142,7 @@ class Assignment(Base):
 
 
 class AssignmentAttachment(Base):
+    """File attached to an assignment, ordered by ``sort_order``."""
     __tablename__ = "assignment_attachments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     assignment_id: Mapped[str] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
@@ -126,6 +154,11 @@ class AssignmentAttachment(Base):
 
 
 class Submission(Base):
+    """One student's submission per assignment.
+
+    Unique on ``(assignment_id, student_id)``; ``score`` stays null until the
+    work is graded.
+    """
     __tablename__ = "submissions"
     __table_args__ = (UniqueConstraint("assignment_id", "student_id", name="uq_submission_assignment_student"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -141,6 +174,7 @@ class Submission(Base):
 
 
 class FileAsset(Base):
+    """Stored file metadata; the bytes live under ``storage_key``."""
     __tablename__ = "file_assets"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     original_name: Mapped[str] = mapped_column(String(255))
@@ -157,6 +191,11 @@ class FileAsset(Base):
 
 
 class CourseChapter(Base):
+    """Lecture or tutorial chapter of a course.
+
+    ``kind`` is constrained to ``lecture`` or ``tutorial``; titles are unique
+    per course and kind.
+    """
     __tablename__ = "course_chapters"
     __table_args__ = (
         CheckConstraint("kind IN ('lecture', 'tutorial')", name="ck_course_chapter_kind"),
@@ -175,6 +214,7 @@ class CourseChapter(Base):
 
 
 class CourseMaterial(Base):
+    """Material file of a chapter; its ingestion row tracks indexing."""
     __tablename__ = "course_materials"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     chapter_id: Mapped[str] = mapped_column(ForeignKey("course_chapters.id", ondelete="CASCADE"), index=True)
@@ -189,6 +229,10 @@ class CourseMaterial(Base):
     ingestion: Mapped["CourseMaterialIngestion | None"] = relationship(back_populates="material", uselist=False, cascade="all, delete-orphan")
 
 class CourseMaterialIngestion(Base):
+    """Indexing state of one course material.
+
+    ``status`` moves ``pending`` -> ``processing`` -> ``ready`` or ``failed``.
+    """
     __tablename__ = "course_material_ingestions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     material_id: Mapped[str] = mapped_column(ForeignKey("course_materials.id", ondelete="CASCADE"), unique=True, index=True)
@@ -201,6 +245,7 @@ class CourseMaterialIngestion(Base):
     material: Mapped[CourseMaterial] = relationship(back_populates="ingestion")
 
 class CourseMaterialChunk(Base):
+    """Indexed text chunk of a material with its page anchor."""
     __tablename__ = "course_material_chunks"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
@@ -214,6 +259,7 @@ class CourseMaterialChunk(Base):
 
 
 class DiscussionComment(Base):
+    """Threaded course comment; replies point at the parent comment."""
     __tablename__ = "discussion_comments"
     __table_args__ = (
         Index("ix_discussion_comments_course_activity", "course_id", "updated_at"),
@@ -238,6 +284,7 @@ class DiscussionComment(Base):
 
 
 class DiscussionLike(Base):
+    """Unique like of one comment by one user."""
     __tablename__ = "discussion_likes"
     __table_args__ = (
         UniqueConstraint("comment_id", "user_id", name="uq_discussion_like_comment_user"),
@@ -252,6 +299,11 @@ class DiscussionLike(Base):
 
 
 class RecordingSession(Base):
+    """Zoom session record for one schedule occurrence.
+
+    ``status`` moves ``planned`` -> ``live`` -> ``ended``; the unique webhook
+    event id dedupes provider callbacks.
+    """
     __tablename__ = "recording_sessions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
@@ -268,6 +320,7 @@ class RecordingSession(Base):
 
 
 class CourseZoomMeeting(Base):
+    """Weekly Zoom meeting provisioned for one course schedule."""
     __tablename__ = "course_zoom_meetings"
     __table_args__ = (UniqueConstraint("course_id", "schedule_id", name="uq_course_zoom_meeting_schedule"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -288,6 +341,7 @@ class CourseZoomMeeting(Base):
 
 
 class AgentConversation(Base):
+    """Agent chat thread owned by one user, optionally course-scoped."""
     __tablename__ = "agent_conversations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -304,6 +358,7 @@ class AgentConversation(Base):
 
 
 class AgentMessage(Base):
+    """Message of an agent conversation; ``citations`` holds retrieval hits."""
     __tablename__ = "agent_messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     conversation_id: Mapped[str] = mapped_column(ForeignKey("agent_conversations.id", ondelete="CASCADE"), index=True)
@@ -317,6 +372,7 @@ class AgentMessage(Base):
 
 
 class AuditLog(Base):
+    """Admin action record; ``details`` keeps the payload summary."""
     __tablename__ = "audit_logs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
