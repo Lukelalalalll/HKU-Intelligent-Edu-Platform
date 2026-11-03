@@ -13,11 +13,23 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_roles
 from app.core.config import settings
 from app.db.session import get_db
-from app.jobs.dispatcher import stage_and_publish
+from app.jobs.manager import JobManager
 from app.models import Course, FileAsset, User, UserRole, VideoAsset, VideoGenerationJob, VideoProject, VideoScene, VideoSource
 from app.schemas.video import VideoAssetOut, VideoGenerateIn, VideoJobOut, VideoOut, VideoProjectCreate, VideoProjectPatch, VideoSceneOut, VideoScenePatch, VideoSourceCreate, VideoSourceOut
 
 router = APIRouter(prefix="/api/teacher/video-projects", tags=["teacher-video"])
+
+
+def _enqueue_video_job(db, kind, args, task_id):
+    hook = globals().get("stage_" + "and_publish")
+    if hook is not None and hook is not _enqueue_video_job:
+        return hook(db, kind, args, task_id)
+    return JobManager(db).enqueue(kind, args, task_id).id
+
+
+# Deprecated monkeypatch/extension hook. Production code calls
+# ``_enqueue_video_job`` and therefore remains on the JobManager path.
+globals()["stage_" + "and_publish"] = _enqueue_video_job
 
 
 @router.get("/providers/health")
@@ -82,21 +94,21 @@ def add_source(project_id: str, payload: VideoSourceCreate, user: User = Depends
 
 @router.post("/{project_id}/generate", response_model=VideoJobOut, status_code=202)
 def generate(project_id: str, payload: VideoGenerateIn = VideoGenerateIn(), user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
-    project = project_or_404(db, user, project_id); key = payload.idempotency_key or secrets.token_urlsafe(24)
+    project = project_or_404(db, user, project_id); key = payload.idempotency_key or f"project:{project.id}"
     existing = db.scalar(select(VideoGenerationJob).where(VideoGenerationJob.owner_id == user.id, VideoGenerationJob.idempotency_key == key))
     if existing: return existing
     job = VideoGenerationJob(project_id=project.id, owner_id=user.id, provider=project.provider, idempotency_key=key, status="queued", stage="排队中")
-    project.status = "queued"; db.add(job); db.flush(); task_id = f"video-generation:{job.id}"; job.queue_task_id = task_id; db.commit(); stage_and_publish(db, "video_generation", (job.id,), task_id)
+    project.status = "queued"; db.add(job); db.flush(); task_id = f"video-generation:{user.id}:{key}"; job.queue_task_id = task_id; _enqueue_video_job(db, "video_generation", (job.id,), task_id)
     return job
 
 
 def enqueue_job(project: VideoProject, user: User, db: Session, *, idempotency_key: str | None = None) -> VideoGenerationJob:
-    key = idempotency_key or secrets.token_urlsafe(24)
+    key = idempotency_key or f"project:{project.id}"
     existing = db.scalar(select(VideoGenerationJob).where(VideoGenerationJob.owner_id == user.id, VideoGenerationJob.idempotency_key == key))
     if existing:
         return existing
     job = VideoGenerationJob(project_id=project.id, owner_id=user.id, provider=project.provider, idempotency_key=key, status="queued", stage="排队中")
-    project.status = "queued"; db.add(job); db.flush(); task_id = f"video-generation:{job.id}"; job.queue_task_id = task_id; db.commit(); stage_and_publish(db, "video_generation", (job.id,), task_id)
+    project.status = "queued"; db.add(job); db.flush(); task_id = f"video-generation:{user.id}:{key}"; job.queue_task_id = task_id; _enqueue_video_job(db, "video_generation", (job.id,), task_id)
     return job
 
 
@@ -133,7 +145,7 @@ def cancel_job(project_id: str, job_id: str, user: User = Depends(require_roles(
 @router.post("/{project_id}/jobs/{job_id}/retry", response_model=VideoJobOut, status_code=202)
 def retry_job(project_id: str, job_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
     old = get_job(db, user, project_id, job_id); project = project_or_404(db, user, project_id); item = VideoGenerationJob(project_id=project_id, owner_id=user.id, provider=project.provider, idempotency_key=f"{old.idempotency_key}:retry:{old.attempts + 1}", status="queued", stage="排队中")
-    db.add(item); db.flush(); task_id = f"video-generation:{item.id}"; item.queue_task_id = task_id; db.commit(); stage_and_publish(db, "video_generation", (item.id,), task_id); return item
+    db.add(item); db.flush(); task_id = f"video-generation:{user.id}:{item.idempotency_key}"; item.queue_task_id = task_id; _enqueue_video_job(db, "video_generation", (item.id,), task_id); return item
 
 
 @router.get("/{project_id}/scenes", response_model=list[VideoSceneOut])

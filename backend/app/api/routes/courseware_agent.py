@@ -6,7 +6,7 @@ from app.models import AgentConversation, AgentMessage, User, UserRole, Course, 
 from app.schemas import AgentConversationCreate, AgentConversationDetail, AgentConversationOut, AgentMessageCreate, AgentMessageOut, CoursewareQueryIn, CoursewareQueryOut
 from sqlalchemy import select
 from app.services.courseware_rag.service import courseware_rag, unified_courseware_rag
-from app.services.file_processing import upload_asset, bind_document
+from app.services.file_processing import upload_asset_stream, bind_document
 from app.models import AgentMessageAttachment, FileProcessingDocument, FileAsset
 
 router = APIRouter(prefix="/api/courseware-agent", tags=["courseware-agent"])
@@ -66,6 +66,6 @@ def upload_attachment(conversation_id: str, file: UploadFile = File(...), user: 
     conversation = db.scalar(select(AgentConversation).where(AgentConversation.id == conversation_id, AgentConversation.user_id == user.id))
     if not conversation: raise HTTPException(404, "Conversation not found")
     try:
-        asset, document, job = upload_asset(db, uploader_id=user.id, filename=file.filename or "attachment", mime_type=file.content_type, content=file.file.read(), target_type="conversation", target_id=conversation_id, owner_id=user.id, course_id=conversation.course_id, visibility="owner")
+        asset, document, job = upload_asset_stream(db, uploader_id=user.id, filename=file.filename or "attachment", mime_type=file.content_type, file=file.file, target_type="conversation", target_id=conversation_id, owner_id=user.id, course_id=conversation.course_id, visibility="owner")
     except ValueError as exc: raise HTTPException(400, str(exc)) from exc
     return {"id": asset.id, "name": asset.original_name, "document_id": document.id, "job_id": job.id if job else None, "processing_status": document.status}

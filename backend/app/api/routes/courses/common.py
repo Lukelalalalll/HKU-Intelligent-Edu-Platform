@@ -25,7 +25,7 @@ from app.schemas import (
     ScheduleIn,
 )
 from app.storage import LocalStorage
-from app.services.file_processing import upload_asset, bind_document, ensure_document_for_asset, enqueue_job
+from app.services.file_processing import bind_document, ensure_document_for_asset, enqueue_job
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
 

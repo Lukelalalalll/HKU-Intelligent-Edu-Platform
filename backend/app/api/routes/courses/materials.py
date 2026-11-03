@@ -1,4 +1,5 @@
 from .common import *  # noqa: F401,F403
+from app.services.file_processing import upload_asset_stream
 
 @router.get("/{course_id}/materials", response_model=list[CourseChapterOut])
 
@@ -63,9 +64,8 @@ def delete_material_chapter(course_id: str, chapter_id: str, user: User = Depend
 def upload_material(course_id: str, chapter_id: str, file: UploadFile = File(...), title: str | None = Form(default=None), user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
     course = _course_for_user(course_id, user, db, manage=True)
     chapter = _chapter_or_404(course, chapter_id)
-    content = file.file.read()
     try:
-        asset, document, job = upload_asset(db, uploader_id=user.id, filename=file.filename or "material", mime_type=file.content_type, content=content, owner_id=user.id, course_id=course.id, visibility="course")
+        asset, document, job = upload_asset_stream(db, uploader_id=user.id, filename=file.filename or "material", mime_type=file.content_type, file=file.file, owner_id=user.id, course_id=course.id, visibility="course")
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     asset.course_id = course.id

@@ -7,7 +7,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.api.routes import agent, assignments, auth, courses, files, files_v2, file_processing, teacher, student, ppt, ppt_v2, profile, live_class, courseware_agent, lesson_plan, admin_ai, teacher_video
-from app.models import *  # noqa: F401,F403
+import app.models as _models  # noqa: F401
 from app.services.ai_gateway import ensure_ai_defaults
 from app.services.file_processing import recover_jobs
 from app.services.provider_contract import ProviderError

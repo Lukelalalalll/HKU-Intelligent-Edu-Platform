@@ -9,7 +9,8 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.core.config import settings
-from app.services.ppt_agent import PptAgentService, ProviderGateway
+from app.services.ppt.agent_service import PptApplicationService
+from app.services.ppt.context import ProviderGateway
 from app.services.ppt_theme import get_theme, list_layouts
 
 
@@ -46,7 +47,7 @@ saveSlide 的 content 必须保留未修改元素并符合 canvas 1280x720；保
 
 
 class PptEditAgent:
-    def __init__(self, service: PptAgentService):
+    def __init__(self, service: PptApplicationService):
         self.service = service
         self.gateway = ProviderGateway(service.db, service.user.id)
 

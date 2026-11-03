@@ -52,17 +52,29 @@ def stage_task(db, kind: str, args: tuple[Any, ...], task_id: str) -> str:
     from app.models import TaskOutbox
 
     row = db.get(TaskOutbox, task_id)
+    payload = {"args": list(args)}
     if row is None:
         from app.core.config import settings
 
         row = TaskOutbox(
             id=task_id,
             task_type=kind,
-            payload_json={"args": list(args)},
+            payload_json=payload,
             status="pending",
             max_attempts=settings.task_max_retries,
         )
         db.add(row)
+    elif row.status in {"published", "failed", "canceled"} and row.payload_json != payload:
+        # A stable business key may be reused after the previous job reached
+        # a terminal state. Keep concurrent identical submissions idempotent,
+        # but allow a new entity job to reuse the same outbox identity.
+        row.payload_json = payload
+        row.status = "pending"
+        row.next_run_at = None
+        row.lease_until = None
+        row.last_error = None
+        row.published_at = None
+        row.attempts = 0
     return task_id
 
 

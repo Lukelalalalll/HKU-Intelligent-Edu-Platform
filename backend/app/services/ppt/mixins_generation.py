@@ -18,10 +18,10 @@ class _GenerationMixin:
             p.design_status, p.current_stage = "running", "layout"
             job = PptGenerationJob(project_id=p.id, total_pages=len(pages), status="queued", stage="queued")
             self.db.add(job); self.db.commit(); self.db.refresh(job)
-            from app.jobs.dispatcher import stage_and_publish
-            task_id = f"ppt-generation:{job.id}"
+            from app.jobs.manager import JobManager
+            task_id = f"ppt-generation:{p.id}"
             job.queue_task_id = task_id
-            stage_and_publish(self.db, "ppt_generation", (job.id, p.id, self.user.id), task_id)
+            JobManager(self.db).enqueue("ppt_generation", (job.id, p.id, self.user.id), task_id)
             self._event(p, "generation.started", {"job_id": job.id, "total_pages": len(pages)}); self.db.commit()
             return self.serialize_generation(job)
 
@@ -42,10 +42,10 @@ class _GenerationMixin:
             pages = sorted(p.pages, key=lambda x: x.sort_order)
             job = PptGenerationJob(project_id=p.id, total_pages=len(pages), status="queued", stage="visual")
             self.db.add(job); self.db.commit(); self.db.refresh(job)
-            from app.jobs.dispatcher import stage_and_publish
-            task_id = f"ppt-visual:{job.id}"
+            from app.jobs.manager import JobManager
+            task_id = f"ppt-visual:{p.id}"
             job.queue_task_id = task_id
-            stage_and_publish(self.db, "ppt_visual_research", (job.id, p.id, self.user.id), task_id)
+            JobManager(self.db).enqueue("ppt_visual_research", (job.id, p.id, self.user.id), task_id)
             self._event(p, "visual.research.started", {"job_id": job.id, "total_pages": len(pages)}); self.db.commit()
             return self.serialize_generation(job)
 
@@ -131,4 +131,3 @@ class _GenerationMixin:
             self._event(p, "page.designed", {"page_id": page.id, "layout_id": layout["id"]})
         self._event(p, "design.quality_checked", {"pages": len(quality), "passed": len(quality)}); p.current_stage = "design"; p.design_status = "ready"; self._event(p, "design.completed", {"page_count": len(pages)}); self.db.commit()
         return {"project": self.serialize_project(p), "pages": [self.serialize_page(page) for page in pages], "assignments": assignments, "quality": quality}
-

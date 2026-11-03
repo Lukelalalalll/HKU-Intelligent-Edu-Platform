@@ -33,7 +33,7 @@ from app.services.browser_image_search import BrowserImageSearch, build_query
 from app.services.image_cache import download_image, validate_public_url
 from app.services.visual_search import extract_keywords, query_text, rank_candidates, stable_asset_id
 from app.services.clip_ranker import rerank
-from app.services.file_processing import upload_asset, bind_document
+from app.services.file_processing import bind_document
 
 
 STAGES = ("init", "outline", "visual", "theme", "layout", "design", "export")

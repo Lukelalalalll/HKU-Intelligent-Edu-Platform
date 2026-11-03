@@ -1,3 +1,2 @@
-from app.schemas import AuthResponse, LoginIn, PasswordChangeIn, ProfileUpdateIn, RegisterIn, UserOut
-
+from app.schemas._legacy import AuthResponse, LoginIn, PasswordChangeIn, ProfileUpdateIn, RegisterIn, UserOut
 __all__ = ["AuthResponse", "LoginIn", "PasswordChangeIn", "ProfileUpdateIn", "RegisterIn", "UserOut"]

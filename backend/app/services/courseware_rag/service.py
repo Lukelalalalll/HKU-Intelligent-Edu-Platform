@@ -84,10 +84,10 @@ def ingest_material(material_id: str) -> None:
         db.close()
 
 def queue_ingestion(material_id: str):
-    from app.jobs.dispatcher import stage_and_publish
+    from app.jobs.manager import JobManager
     db = SessionLocal()
     try:
-        stage_and_publish(db, "courseware_rag", (material_id,), f"courseware-rag:{material_id}")
+        JobManager(db).enqueue("courseware_rag", (material_id,), f"courseware-rag:{material_id}")
     finally:
         db.close()
 

@@ -1,3 +1,2 @@
-from app.schemas import CoursewareCitationOut, CoursewareQueryIn, CoursewareQueryOut
-
-__all__ = [name for name in globals() if not name.startswith("_")]
+from app.schemas._legacy import CoursewareCitationOut, CoursewareQueryIn, CoursewareQueryOut
+__all__ = ["CoursewareCitationOut", "CoursewareQueryIn", "CoursewareQueryOut"]

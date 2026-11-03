@@ -7,7 +7,7 @@ from app.api.deps import current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Assignment, AssignmentAttachment, Course, Enrollment, FileAsset, Submission, User, UserRole, FileProcessingDocument, SubmissionAttachment
-from app.services.file_processing import bind_document, upload_asset
+from app.services.file_processing import bind_document, upload_asset_stream
 from app.schemas import AssignmentCreate, AssignmentOut, SubmissionCreate, SubmissionOut
 
 router = APIRouter(prefix="/api/courses/{course_id}/assignments", tags=["assignments"])
@@ -137,7 +137,7 @@ def add_submission_attachments(course_id: str, assignment_id: str, submission_id
     result = []
     for index, file in enumerate(files):
         try:
-            asset, document, _job = upload_asset(db, uploader_id=user.id, filename=file.filename or "submission", mime_type=file.content_type, content=file.file.read(), target_type="submission", target_id=submission.id, owner_id=user.id, course_id=course_id, visibility="owner")
+            asset, document, _job = upload_asset_stream(db, uploader_id=user.id, filename=file.filename or "submission", mime_type=file.content_type, file=file.file, target_type="submission", target_id=submission.id, owner_id=user.id, course_id=course_id, visibility="owner")
         except ValueError as exc: raise HTTPException(400, str(exc)) from exc
         item = SubmissionAttachment(submission_id=submission.id, file_asset_id=asset.id, document_id=document.id, sort_order=existing_count + index)
         db.add(item); db.flush(); result.append({"id": item.id, "file_asset_id": asset.id, "file_name": asset.original_name, "document_id": document.id, "job_id": _job.id if _job else None, "processing_status": document.status})

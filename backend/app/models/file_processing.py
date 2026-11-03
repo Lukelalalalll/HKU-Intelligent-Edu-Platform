@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -34,7 +34,16 @@ class FileProcessingDocument(Base):
 
 class FileProcessingJob(Base):
     __tablename__ = "file_processing_jobs"
-    __table_args__ = (Index("ix_file_processing_jobs_status_created", "status", "created_at"),)
+    __table_args__ = (
+        Index("ix_file_processing_jobs_status_created", "status", "created_at"),
+        Index(
+            "uq_file_processing_active_document",
+            "document_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued', 'running')"),
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     document_id: Mapped[str] = mapped_column(ForeignKey("file_processing_documents.id", ondelete="CASCADE"), index=True)

@@ -1,3 +1,2 @@
-from app.schemas import AgentConversationCreate, AgentConversationDetail, AgentConversationOut, AgentMessageCreate, AgentMessageOut
-
-__all__ = [name for name in globals() if not name.startswith("_")]
+from app.schemas._legacy import AgentConversationCreate, AgentConversationDetail, AgentConversationOut, AgentMessageCreate, AgentMessageOut
+__all__ = ["AgentConversationCreate", "AgentConversationDetail", "AgentConversationOut", "AgentMessageCreate", "AgentMessageOut"]

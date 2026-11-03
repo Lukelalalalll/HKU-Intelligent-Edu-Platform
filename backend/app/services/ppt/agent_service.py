@@ -5,7 +5,7 @@ from .mixins_generation import _GenerationMixin
 from .mixins_visual import _VisualMixin
 from .mixins_document import _DocumentMixin
 
-class PptAgentService(_CoreMixin, _RequirementsMixin, _GenerationMixin, _VisualMixin, _DocumentMixin):
+class PptApplicationService(_CoreMixin, _RequirementsMixin, _GenerationMixin, _VisualMixin, _DocumentMixin):
     def __init__(self, db: Session, user: User):
         self.db, self.user = db, user
 
@@ -24,7 +24,7 @@ def _run_visual_research_job(job_id: str, project_id: str, user_id: str) -> None
             try:
                 p, u, page = local.get(PptProject, project_id), local.get(User, user_id), local.get(PptPage, page_id)
                 if not p or not u or not page: return False
-                svc = PptAgentService(local, u)
+                svc = PptApplicationService(local, u)
                 page.statuses_json = {**(page.statuses_json or {}), "visual": "running"}; local.commit()
                 svc._event(p, "page.visual.searching", {"job_id": job_id, "page_id": page_id}); local.commit()
                 svc._visual_research(p, page); svc._visual_plan(p, page)
@@ -68,7 +68,7 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
         user = db.get(User, user_id)
         if not job or not project or not user or job.status == "cancelled":
             return
-        service = PptAgentService(db, user)
+        service = PptApplicationService(db, user)
         job.status, job.stage, job.started_at = "running", "planning", datetime.now(timezone.utc)
         service._event(project, "generation.started", {"job_id": job.id, "total_pages": job.total_pages}); db.commit()
         pages = sorted(project.pages, key=lambda x: x.sort_order)
@@ -104,7 +104,7 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
             try:
                 p = local.get(PptProject, project_id); u = local.get(User, user_id); page = local.get(PptPage, page_id)
                 if not p or not u or not page: return False
-                svc = PptAgentService(local, u)
+                svc = PptApplicationService(local, u)
                 svc._event(p, "page.content_started", {"job_id": job_id, "page_id": page_id}); local.commit()
                 try:
                     svc._visual_research(p, page)
@@ -172,7 +172,7 @@ def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
             job.status, job.stage, job.error_message = "failed", "failed", str(exc); job.finished_at = datetime.now(timezone.utc); db.commit()
             project = db.get(PptProject, project_id)
             if project:
-                PptAgentService(db, db.get(User, user_id))._event(project, "generation.failed", {"job_id": job_id, "error": str(exc)}); db.commit()
+                PptApplicationService(db, db.get(User, user_id))._event(project, "generation.failed", {"job_id": job_id, "error": str(exc)}); db.commit()
     finally:
         db.close()
 

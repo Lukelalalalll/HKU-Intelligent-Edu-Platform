@@ -200,7 +200,8 @@ class _DocumentMixin:
         p = self.project(project_id); page = self.page(project_id, page_id) if page_id else None
         content = upload.file.read()
         try:
-            asset, processed, job = upload_asset(self.db, uploader_id=self.user.id, filename=upload.filename or "document", mime_type=upload.content_type, content=content, target_type="ppt_project", target_id=p.id, owner_id=self.user.id, visibility="owner", metadata={"page_id": page.id if page else None})
+            import io
+            asset, processed, job = upload_asset_stream(self.db, uploader_id=self.user.id, filename=upload.filename or "document", mime_type=upload.content_type, file=io.BytesIO(content), target_type="ppt_project", target_id=p.id, owner_id=self.user.id, visibility="owner", metadata={"page_id": page.id if page else None})
         except ValueError as exc: raise HTTPException(415, str(exc)) from exc
         name = asset.original_name; root = settings.ppt_storage_path / p.id; root.mkdir(parents=True, exist_ok=True); path = root / name; path.write_bytes(content)
         text = self._extract_text(path, content); collection = self.db.scalar(select(PptSourceCollection).where(PptSourceCollection.project_id == p.id, PptSourceCollection.page_id == (page.id if page else None)))
