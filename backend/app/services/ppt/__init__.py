@@ -1,4 +1,10 @@
-"""PPT application service public exports."""
+"""PPT application service public exports.
+
+This package is the import surface for the split PPT services: HTTP routes
+build ``PptRouteService`` from ``services_base``, while background runners
+build ``PptApplicationService`` directly.
+"""
+
 from .project_service import ProjectService
 from .requirement_service import RequirementService
 from .generation_service import GenerationService

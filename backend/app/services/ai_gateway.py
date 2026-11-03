@@ -1,3 +1,10 @@
+"""Provider-neutral AI gateway backed by the platform business bindings.
+
+Each business code resolves one enabled provider and model.  The gateway
+exposes chat, JSON, streaming and web-search calls and raises
+``ProviderError`` subclasses that the API edge maps to HTTP status codes.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -23,6 +30,8 @@ from app.services.provider_contract import (
 )
 
 
+# Catalog of AI businesses seeded on first start.  ``role`` is the user role
+# the business serves; the admin routes expose these entries to admins only.
 BUSINESSES = {
     "teacher_ppt_agent": {"role": "teacher", "display_name": "教师 PPT Agent", "description": "PPT 对话、需求分析、课件生成与编辑"},
     "teacher_lesson_plan_agent": {"role": "teacher", "display_name": "教师学案 Agent", "description": "学案对话与学案生成"},
@@ -31,6 +40,8 @@ BUSINESSES = {
 
 
 def _cipher():
+    # The Fernet key is derived from the JWT secret, so rotating that secret
+    # also makes previously stored provider keys undecryptable.
     try:
         from cryptography.fernet import Fernet
         return Fernet(base64.urlsafe_b64encode(hashlib.sha256(settings.jwt_secret_key.encode()).digest()))
@@ -39,18 +50,22 @@ def _cipher():
 
 
 def encrypt_api_key(value: str) -> str:
+    """Encrypt a provider API key before it is persisted."""
     return _cipher().encrypt(value.encode()).decode()
 
 
 def decrypt_api_key(value: str) -> str:
+    """Decrypt a stored provider key; empty input returns an empty string."""
     return _cipher().decrypt(value.encode()).decode() if value else ""
 
 
 def mask_api_key(value: str) -> str:
+    """Return a display hint for a key without exposing its full value."""
     return f"{value[:4]}••••{value[-4:]}" if len(value) > 8 else ("••••••••" if value else "")
 
 
 def _env_fallback() -> dict[str, Any]:
+    """Return the environment provider template used before admin setup."""
     return {"base_url": settings.llm_base_url, "api_key": settings.llm_api_key, "model": settings.llm_model, "timeout_seconds": 120, "provider_type": "deepseek" if "deepseek" in settings.llm_base_url.lower() else "openai", "capabilities": {"json": True, "stream": True, "web_search": "deepseek" in settings.llm_base_url.lower()}}
 
 
@@ -85,6 +100,12 @@ class AIGateway(ModelProvider):
         self.capabilities = (self.provider.capabilities_json if self.provider else fallback["capabilities"]) or {}
 
     def _client(self):
+        """Build an OpenAI-compatible client for the resolved provider.
+
+        Raises:
+            HTTPException: 409 when the business has no usable API key, or
+                500 when the optional ``openai`` dependency is missing.
+        """
         if not self.api_key:
             raise HTTPException(409, f"AI 业务 {self.business_code} 尚未配置可用 API Key")
         try:
@@ -94,6 +115,13 @@ class AIGateway(ModelProvider):
         return _cached_client(self.api_key, self.base_url.rstrip("/"), self.timeout)
 
     def json(self, system: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Return one structured JSON completion.
+
+        A prose answer is accepted when it contains a JSON object; otherwise
+        the call raises ``InvalidProviderResponse``.  SDK failures are
+        re-raised as the provider error contract instead of leaking vendor
+        exceptions to the route layer.
+        """
         try:
             response = self._client().chat.completions.create(model=self.model, temperature=0.2, response_format={"type": "json_object"}, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
         except Exception as exc:
@@ -115,6 +143,7 @@ class AIGateway(ModelProvider):
     generate_json = json
 
     def text(self, system: str, payload: dict[str, Any]) -> str:
+        """Return one plain-text completion."""
         try:
             response = self._client().chat.completions.create(model=self.model, temperature=0.3, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
         except Exception as exc:
@@ -126,6 +155,12 @@ class AIGateway(ModelProvider):
     generate_text = text
 
     def stream_json(self, system: str, payload: dict[str, Any]):
+        """Yield incremental markdown chunks, then the parsed final object.
+
+        Chunks are decoded from the partially received ``assistant_markdown``
+        string, so the stream only emits text that is already valid inside
+        that JSON field rather than raw provider deltas.
+        """
         try:
             response = self._client().chat.completions.create(model=self.model, temperature=0.2, response_format={"type": "json_object"}, messages=[{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], stream=True)
         except Exception as exc:
@@ -165,10 +200,22 @@ class AIGateway(ModelProvider):
         yield {"type": "final", "data": data}
 
     def chat(self, system: str, user: str) -> str:
+        """Return an assistant reply for a single user turn."""
         response = self._client().chat.completions.create(model=self.model, temperature=0.2, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return response.choices[0].message.content or ""
 
     def web_search_json(self, query: str, image_focus: bool = False) -> dict[str, Any]:
+        """Run the provider's native web search and return its JSON result.
+
+        ``image_focus`` is part of the public signature, but the native
+        ``web_search`` tool has no image-only switch, so the request below does
+        not branch on it.
+
+        Raises:
+            MissingProviderCapability: when the provider was configured
+                without web search support.
+            InvalidProviderResponse: when the tool reply holds no JSON object.
+        """
         # Keep the gateway usable in lightweight unit tests and legacy callers
         # that construct it with ``__new__`` and inject only ``config`` and a
         # client.  A fully initialised gateway still uses provider capabilities
@@ -192,12 +239,18 @@ class AIGateway(ModelProvider):
                 raise InvalidProviderResponse("联网搜索返回的结构不是有效 JSON") from parse_exc
 
     def health_check(self) -> dict[str, Any]:
+        """Report whether the resolved provider has credentials and a model."""
         if not self.api_key:
             return {"status": "unconfigured", "business_code": self.business_code}
         return {"status": "configured", "business_code": self.business_code, "model": self.model, "base_url": self.base_url}
 
 
 def _classify_provider_error(exc: Exception) -> ProviderError:
+    """Map a vendor SDK exception onto the shared provider error contract.
+
+    Classification is name and message based because the OpenAI-compatible
+    SDKs expose a different exception tree per vendor.
+    """
     name = type(exc).__name__.lower()
     text = str(exc).lower()
     if "timeout" in name or "timeout" in text:
@@ -211,11 +264,14 @@ def _classify_provider_error(exc: Exception) -> ProviderError:
 
 @lru_cache(maxsize=32)
 def _cached_client(api_key: str, base_url: str, timeout: int):
+    # Reuse one client per credential and base URL so model calls share a
+    # single HTTP connection pool.
     from openai import OpenAI
     return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
 
 def gateway_for(db: Session, business_code: str) -> AIGateway:
+    """Return the gateway for a known business, or raise a 404."""
     if business_code not in BUSINESSES:
         raise HTTPException(404, "未知 AI 业务")
     return AIGateway(db, business_code)

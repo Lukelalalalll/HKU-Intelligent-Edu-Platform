@@ -8,10 +8,14 @@ from datetime import datetime, timedelta, timezone
 
 from app.jobs.celery_app import celery_app
 
+# Local fallback used by tests and developer checkouts without Redis.  It is
+# not durable: the outbox row stays the source of truth for recovery.
 _fallback_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="hku-fallback")
 _fallback_lock = Lock()
 _fallback_tasks: set[str] = set()
 
+# Job kinds accepted by ``dispatch`` mapped to their task entrypoints in
+# ``app.jobs.tasks``.
 _TASKS = {
     "file_processing": "process_file_processing_job",
     "courseware_rag": "ingest_courseware_material",
@@ -27,6 +31,8 @@ _TASKS = {
 
 @dataclass(frozen=True)
 class JobHandle:
+    """Stable identity and delivery status of one staged job."""
+
     id: str
     kind: str
     status: str
@@ -37,6 +43,8 @@ def _utcnow() -> datetime:
 
 
 def _retry_at(attempts: int) -> datetime:
+    # Exponential backoff with the exponent capped so a row that keeps failing
+    # never schedules its next attempt years into the future.
     from app.core.config import settings
 
     delay = settings.task_retry_backoff_seconds * (2 ** max(0, min(attempts - 1, 8)))
@@ -44,6 +52,7 @@ def _retry_at(attempts: int) -> datetime:
 
 
 def is_queue_available() -> bool:
+    """Return whether this process has a Celery broker to publish to."""
     return celery_app is not None
 
 
@@ -231,6 +240,12 @@ def enqueue(db, kind: str, payload: tuple[Any, ...], idempotency_key: str) -> Jo
 
 
 def cancel(db, job_id: str) -> bool:
+    """Cancel an outbox row that has not been published yet.
+
+    Returns:
+        True when the row moved to ``canceled``; False when it is unknown or
+        already published, because a published task belongs to the broker.
+    """
     from app.models import TaskOutbox
 
     row = db.get(TaskOutbox, job_id)
@@ -243,6 +258,11 @@ def cancel(db, job_id: str) -> bool:
 
 
 def retry(db, job_id: str) -> JobHandle:
+    """Reset a failed outbox row and publish it again.
+
+    Raises:
+        ValueError: when the outbox row does not exist.
+    """
     from app.models import TaskOutbox
 
     row = db.get(TaskOutbox, job_id)

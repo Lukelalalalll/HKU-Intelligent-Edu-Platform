@@ -1,3 +1,9 @@
+"""Composed PPT application service and the background job runners.
+
+The mixins hold the domain logic; this module only assembles them into one
+class and executes deck generation outside the request thread.
+"""
+
 from .context import *  # noqa: F401,F403
 from .mixins_core import _CoreMixin
 from .mixins_requirements import _RequirementsMixin
@@ -6,6 +12,13 @@ from .mixins_visual import _VisualMixin
 from .mixins_document import _DocumentMixin
 
 class PptApplicationService(_CoreMixin, _RequirementsMixin, _GenerationMixin, _VisualMixin, _DocumentMixin):
+    """Single MRO of the PPT domain mixins.
+
+    The composition order is part of the contract: later mixins must not
+    shadow the core helpers, because every job runner calls them through this
+    class.
+    """
+
     def __init__(self, db: Session, user: User):
         self.db, self.user = db, user
 
@@ -13,6 +26,13 @@ class PptApplicationService(_CoreMixin, _RequirementsMixin, _GenerationMixin, _V
 
 
 def _run_visual_research_job(job_id: str, project_id: str, user_id: str) -> None:
+    """Run image research for every page of a project as one serial job.
+
+    Each page runs in its own short-lived session so one failed page cannot
+    roll back progress that earlier pages already recorded.  The job row keeps
+    the progress counters; terminal status is ``completed``,
+    ``completed_with_errors`` or ``failed``.
+    """
     db = SessionLocal()
     try:
         job, project, user = db.get(PptGenerationJob, job_id), db.get(PptProject, project_id), db.get(User, user_id)
@@ -60,7 +80,14 @@ def _run_visual_research_job(job_id: str, project_id: str, user_id: str) -> None
 
 
 def _run_generation_job(job_id: str, project_id: str, user_id: str) -> None:
-    """Run deck planning and page generation outside the request thread."""
+    """Run deck planning and page generation outside the request thread.
+
+    Phase order is planner, layout assignment, per-page content/design, then
+    quality check.  A failed planner call degrades to an empty plan, and each
+    page falls back from the LLM document to the layout slide builder and
+    finally to the template document, so one provider failure does not block
+    the whole deck.
+    """
     db = SessionLocal()
     try:
         job = db.get(PptGenerationJob, job_id)

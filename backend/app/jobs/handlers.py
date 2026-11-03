@@ -15,6 +15,12 @@ from app.models import PptAgentEvent, PptExportJob, PptProject
 
 
 def run_ppt_export(export_id: str, project_id: str, filename: str | None = None) -> None:
+    """Render one deck to PPTX and record the terminal job state.
+
+    Failures are stored on the job row and emitted as an ``export.failed``
+    event; the exception is swallowed so the worker does not retry a
+    deterministic rendering error.
+    """
     from app.services.ppt_export import export_project_pptx
 
     db = SessionLocal()
@@ -35,6 +41,8 @@ def run_ppt_export(export_id: str, project_id: str, filename: str | None = None)
         db.add(PptAgentEvent(project_id=project_id, event_type="export.completed", payload_json={"job_id": export_id}))
         db.commit()
     except Exception as exc:
+        # The failed transaction must be rolled back before the job row can be
+        # re-read and marked failed.
         db.rollback()
         job = db.get(PptExportJob, export_id)
         if job:

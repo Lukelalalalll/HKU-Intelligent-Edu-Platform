@@ -9,6 +9,8 @@ from app.services.ppt.context import (
 )
 from app.services.ppt.agent_service import PptApplicationService, _run_visual_research_job, _run_generation_job
 
+# Legacy module-level executor handles.  Task submission now lives in
+# ``app.jobs.dispatcher``; the names stay so historical imports still resolve.
 generation_executor = None
 visual_executor = None
 

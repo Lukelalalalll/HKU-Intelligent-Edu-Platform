@@ -1,3 +1,4 @@
+"""Server-sent event streams for project, message and chat updates."""
 from fastapi import APIRouter
 from ._compat import selected_routes
 router = APIRouter()

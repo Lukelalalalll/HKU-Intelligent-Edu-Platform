@@ -25,6 +25,8 @@ if Celery is not None and redis is not None and settings.task_queue_enabled:
         backend=settings.task_result_backend,
         include=["app.jobs.tasks"],
     )
+    # Acknowledge after the handler returns and requeue the task when a worker
+    # disappears, so a crash mid-job does not lose the unit of work.
     celery_app.conf.update(
         task_serializer="json",
         accept_content=["json"],
@@ -37,6 +39,8 @@ if Celery is not None and redis is not None and settings.task_queue_enabled:
         broker_connection_retry_on_startup=True,
         task_always_eager=settings.task_queue_eager,
         task_eager_propagates=True,
+        # Safety net for rows that a broker outage or a crashed publisher left
+        # behind; the API also runs the same recovery pass at startup.
         beat_schedule={
             "republish-task-outbox": {
                 "task": "hku.system.republish_outbox",

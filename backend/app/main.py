@@ -1,3 +1,11 @@
+"""FastAPI application entrypoint.
+
+This module only owns process-level concerns: startup recovery of committed
+background work, the provider-error to HTTP mapping, CORS and router
+registration.  Schema changes belong to Alembic; request handling belongs to
+the route modules.
+"""
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +15,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.api.routes import agent, assignments, auth, courses, files, files_v2, file_processing, teacher, student, ppt, ppt_v2, profile, live_class, courseware_agent, lesson_plan, admin_ai, teacher_video
+# Importing the package registers every mapper before recovery opens a session.
 import app.models as _models  # noqa: F401
 from app.services.ai_gateway import ensure_ai_defaults
 from app.services.file_processing import recover_jobs
@@ -14,6 +23,12 @@ from app.services.provider_contract import ProviderError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Run startup recovery before the process accepts traffic.
+
+    Startup re-applies provider defaults, requeues file-processing jobs and
+    republishes outbox rows that were left pending.  The session opened here
+    is closed before the first request is served.
+    """
     # Schema creation belongs to Alembic.  The API process only performs
     # lightweight recovery of work that was committed before a restart.
     db = SessionLocal()
@@ -21,6 +36,8 @@ async def lifespan(app: FastAPI):
         ensure_ai_defaults(db)
         recover_jobs()
         from app.jobs.dispatcher import recover_outbox, recover_stale_jobs
+        # Expired leases are released first so their rows become eligible for
+        # the republish pass that follows.
         recover_stale_jobs()
         recover_outbox()
     finally:
@@ -32,6 +49,11 @@ app = FastAPI(title="HKU Intelligent Edu Platform", version="0.1.0", lifespan=li
 
 @app.exception_handler(ProviderError)
 async def provider_error_handler(request: Request, exc: ProviderError):
+    """Map provider failures to problem-details JSON with a retry hint.
+
+    Retryable failures return 503 so clients and workers can back off;
+    non-retryable ones return 502 because repeating the call will not help.
+    """
     status_code = 503 if getattr(exc, "retryable", False) else 502
     return JSONResponse(status_code=status_code, content={"type": "about:blank", "title": type(exc).__name__, "detail": str(exc), "retryable": bool(getattr(exc, "retryable", False))})
 
@@ -59,13 +81,25 @@ app.include_router(teacher_video.webhook_router)
 
 @app.get("/healthz")
 def healthz():
+    """Report process liveness without touching any dependency."""
     return {"status": "ok", "service": "backend"}
 
 @app.get("/readyz")
 def readyz():
+    """Report readiness for database, storage, MinerU and the task broker.
+
+    The storage probe writes and deletes a file under the upload root, so a
+    read-only volume fails readiness here instead of failing the first upload.
+
+    Raises:
+        HTTPException: 503 carrying the per-check result when a required
+            dependency is unavailable.
+    """
     import shutil
     from fastapi import HTTPException
 
+    # The broker starts as healthy: deployments that leave the queue disabled
+    # must not become permanently unready.
     checks = {"database": False, "storage": False, "mineru": False, "broker": True}
     try:
         with SessionLocal() as db:
@@ -91,6 +125,8 @@ def readyz():
                 connection.release()
         except Exception:
             checks["broker"] = False
+    # MinerU is only a hard requirement when document parsing is expected to
+    # work in this deployment.
     required = ["database", "storage"] + (["mineru"] if settings.file_processing_require_mineru else [])
     if not all(checks[name] for name in required) or not checks["broker"]:
         raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})

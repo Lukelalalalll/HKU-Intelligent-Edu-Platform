@@ -41,12 +41,17 @@ def run_video_generation(job_id: str):
     return run_video_job(job_id)
 
 def run_video_render(job_id: str):
+    # Render re-enters the same job pipeline; the separate task name exists for
+    # the dispatcher's kind mapping.
     return run_video_generation(job_id)
 
 def run_video_cleanup(job_id: str):
+    # Reserved hook: no caller enqueues ``video_cleanup`` today, so the task
+    # only acknowledges the id.
     return {"job_id": job_id, "status": "cleaned"}
 
 def run_video_provider_poll(job_id: str):
+    # Polling resumes the pipeline for a job whose provider reported work.
     return run_video_generation(job_id)
 
 
@@ -56,6 +61,8 @@ def republish_outbox():
     return recover_outbox()
 
 
+# Without Celery installed the same callables stay importable as plain
+# functions, which is what the local fallback executor and tests call.
 if celery_app is not None:  # pragma: no cover - requires celery installation
     process_file_processing_job = celery_app.task(
         name="hku.file_processing.process", bind=False, max_retries=3

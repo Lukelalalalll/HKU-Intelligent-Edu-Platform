@@ -1,3 +1,9 @@
+"""Application settings loaded from the environment and ``.env`` files.
+
+Relative runtime directories are anchored to the repository root so the API
+process, Celery workers and tests resolve the same locations.
+"""
+
 from functools import lru_cache
 from pathlib import Path
 
@@ -5,6 +11,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Runtime configuration for the API, workers and tests.
+
+    Values resolve from the process environment first and from ``.env`` files
+    second; unknown keys are ignored so one shared file can serve several
+    services.
+    """
+
     database_url: str = "postgresql+psycopg://hku:hku_dev_password@localhost:5432/hku_edu"
     jwt_secret_key: str = "change-this-development-secret"
     jwt_access_minutes: int = 30
@@ -20,6 +33,8 @@ class Settings(BaseSettings):
     # DeepSeek currently does not expose an embeddings endpoint. Keep this
     # optional so the provider template does not suggest an OpenAI model.
     embedding_model: str = ""
+    # Courseware RAG indexing: chunking, retrieval depth and the working dir
+    # that holds extracted text and vector artifacts.
     courseware_rag_parser: str = "builtin"
     courseware_rag_chunk_size: int = 1200
     courseware_rag_chunk_overlap: int = 160
@@ -41,6 +56,8 @@ class Settings(BaseSettings):
     visual_search_max_concurrency: int = 3
     visual_search_browser_headless: bool = True
     visual_search_browser_executable_path: str = ""
+    # Zoom Server-to-Server OAuth, Meeting SDK and webhook credentials.  All
+    # values stay server-side; the browser only receives signed meeting data.
     zoom_account_id: str = ""
     zoom_client_id: str = ""
     zoom_client_secret: str = ""
@@ -52,6 +69,7 @@ class Settings(BaseSettings):
     zoom_webhook_secret_token: str = ""
     zoom_webhook_verification_token: str = ""
     zoom_api_base_url: str = "https://api.zoom.us/v2"
+    # Local document pipeline: storage root, the MinerU CLI and parser tuning.
     file_processing_dir: str = "backend/processed"
     file_processing_require_mineru: bool = True
     file_processing_mineru_command: str = "mineru"
@@ -76,6 +94,8 @@ class Settings(BaseSettings):
     coze_poll_interval_seconds: float = 2.0
     coze_webhook_secret: str = ""
     coze_enabled: bool = False
+    # Local video renderer: storage root, model/toolchain paths and the
+    # resolution/step defaults used when a project does not override them.
     video_storage_dir: str = "backend/video_storage"
     local_video_enabled: bool = True
     local_video_model_dir: str = ""
@@ -107,24 +127,28 @@ class Settings(BaseSettings):
 
     @property
     def upload_path(self) -> Path:
+        """Return the upload root, creating it on first access."""
         path = self._data_path(self.upload_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
     def ppt_storage_path(self) -> Path:
+        """Return the root that holds generated decks, assets and exports."""
         path = self._data_path(self.ppt_storage_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
     def file_processing_path(self) -> Path:
+        """Return the root for extracted document text and parser output."""
         path = self._data_path(self.file_processing_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
     def video_storage_path(self) -> Path:
+        """Return the root for rendered and uploaded teaching videos."""
         path = self._data_path(self.video_storage_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
@@ -132,6 +156,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return the process-wide settings singleton."""
     return Settings()
 
 

@@ -1,3 +1,4 @@
+"""Requirement interview, outline, message, source and checkpoint routes."""
 from fastapi import APIRouter
 from ._compat import selected_routes
 router = APIRouter()

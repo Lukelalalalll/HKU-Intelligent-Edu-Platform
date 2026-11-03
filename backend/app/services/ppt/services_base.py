@@ -4,12 +4,20 @@ from app.models import User
 from .agent_service import PptApplicationService
 
 class PptServiceBase:
+    """Shared dependency boundary for PPT application services.
+
+    Routes depend on this facade instead of the historical monolith, so a
+    route module can be split without changing request handling.
+    """
+
     def __init__(self, db: Session, user: User):
         self.db = db
         self.user = user
         self._app = PptApplicationService(db, user)
 
     def __getattr__(self, name):
+        # Fall back to the composed application service so callers written
+        # against the pre-split module keep resolving the mixin methods.
         return getattr(self._app, name)
 
 
