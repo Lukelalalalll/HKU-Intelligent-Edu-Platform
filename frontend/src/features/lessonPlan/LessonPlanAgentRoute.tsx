@@ -1,22 +1,116 @@
-import React from "react";
-import { useNavigate, useParams } from "react-router-dom";
+/**
+ * Lesson plan agent route container.
+ *
+ * The home surface owns project discovery and creation; a project route hands
+ * off to the workspace, which loads its own state.
+ */
+import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { api } from "../../api";
+import { useNavigate, useParams } from "react-router-dom";
+import { getApiErrorMessage, lessonPlanApi, type LessonPlanCapabilities, type LessonPlanProject } from "../../api";
 import { useI18n } from "../../i18n";
+import { HKUConfirmDialog } from "../../shared/components/HKUDialog";
+import LessonPlanHome from "./LessonPlanHome";
+import LessonPlanWorkspace from "./LessonPlanWorkspace";
 import "./LessonPlanAgentRoute.css";
 
-type Project = { id: string; title: string; request_text: string; page_count: number };
-type Page = { id: string; title: string; document: unknown; revision: number };
-
-/**
- * Lesson plan agent workspace: create, chat and generate the PDF.
- */
+/** Entry point for the lesson plan agent feature. */
 export default function LessonPlanAgentRoute() {
-  const { projectId } = useParams(); const nav = useNavigate(); const [projects, setProjects] = React.useState<Project[]>([]); const [project, setProject] = React.useState<Project | null>(null); const [pages, setPages] = React.useState<Page[]>([]); const [prompt, setPrompt] = React.useState(""); const [input, setInput] = React.useState(""); const [chat, setChat] = React.useState<{ role: "user" | "agent"; text: string }[]>([]); const [busy, setBusy] = React.useState(false); const [active, setActive] = React.useState(0); const { t } = useI18n();
-  const load = React.useCallback(async () => { const list = (await api.get<{ items: Project[] }>("/lesson-plans/projects")).data.items; setProjects(list); if (projectId) { setProject((await api.get<Project>(`/lesson-plans/projects/${projectId}`)).data); setPages((await api.get<{ items: Page[] }>(`/lesson-plans/projects/${projectId}/pages`)).data.items); } else setProject(null); }, [projectId]); React.useEffect(() => { void load(); }, [load]);
-  const create = async () => { setBusy(true); try { const p = (await api.post<Project>("/lesson-plans/projects", { title: prompt.slice(0, 28), request_text: prompt })).data; nav(`/teacher/lesson-plan-agent/${p.id}`); } finally { setBusy(false); } };
-  const send = async () => { if (!project || !input.trim()) return; const text = input.trim(); setInput(""); setChat(x => [...x, { role: "user", text }]); try { const r = (await api.post(`/lesson-plans/projects/${project.id}/requirements/chat`, { content: text })).data; setChat(x => [...x, { role: "agent", text: r.message }]); } catch { toast.error(t("lessonPlan.toast.sendFailed")); } };
-  const generate = async () => { if (!project) return; setBusy(true); try { await api.post(`/lesson-plans/projects/${project.id}/generate`); await load(); toast.success(t("lessonPlan.toast.generated")); } finally { setBusy(false); } };
-  if (!project) return <div className="lesson-home"><header className="lesson-topbar"><div className="lesson-brand"><b>HKU</b><span>LESSON PLAN AGENT</span></div><div className="lesson-context"><span>{t("lessonPlan.home.contextLabel")}</span><i /> <span>{t("lessonPlan.home.modelManaged")}</span></div></header><main className="lesson-home-grid"><section className="lesson-create-card"><div className="lesson-create-copy"><div className="lesson-spark">✦</div><span className="lesson-eyebrow">YOUR NEXT TEACHING MATERIAL</span><h1>{t("lessonPlan.home.titleLead")}<em>{t("lessonPlan.home.titleAccent")}</em></h1><p>{t("lessonPlan.home.subtitle")}</p></div><div className="lesson-composer"><textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder={t("lessonPlan.home.promptPlaceholder")} rows={4} /><div className="lesson-composer-footer"><span>{prompt.length ? t(prompt.length === 1 ? "lessonPlan.home.charCount.one" : "lessonPlan.home.charCount.other", { count: prompt.length }) : t("lessonPlan.home.naturalLanguageHint")}</span><button className="lesson-button primary" onClick={() => void create()} disabled={busy || !prompt.trim()}>{busy ? t("lessonPlan.home.creating") : t("lessonPlan.home.create")}<b>↗</b></button></div></div></section><section className="lesson-projects"><div className="lesson-section-head"><div><span className="lesson-eyebrow">RECENT PROJECTS</span><h2>{t("lessonPlan.home.recentProjects")}</h2></div><span>{t(projects.length === 1 ? "lessonPlan.home.projectCount.one" : "lessonPlan.home.projectCount.other", { count: projects.length })}</span></div>{projects.length ? <div className="lesson-project-list">{projects.map(p => <button className="lesson-project-card" key={p.id} onClick={() => nav(`/teacher/lesson-plan-agent/${p.id}`)}><div className="lesson-project-meta"><span>{t("lessonPlan.home.projectType")}</span><i /> <span>{t((p.page_count || 0) === 1 ? "lessonPlan.home.pageCount.one" : "lessonPlan.home.pageCount.other", { count: p.page_count || 0 })}</span><b>↗</b></div><h3>{p.title}</h3><p>{p.request_text}</p></button>)}</div> : <div className="lesson-empty-projects"><span>✦</span><strong>{t("lessonPlan.home.emptyTitle")}</strong><p>{t("lessonPlan.home.emptyHint")}</p></div>}</section><aside className="lesson-settings-card"><div className="lesson-settings-icon">⌁</div><span className="lesson-eyebrow">WORKSPACE SETTINGS</span><h2>{t("lessonPlan.home.settingsTitle")}</h2><p>{t("lessonPlan.home.settingsDescription")}</p><div className="lesson-status"><i /> {t("lessonPlan.home.managedByPlatform")}</div></aside></main></div>;
-  return <div className="lesson-workspace"><header className="lesson-workspace-head"><button className="lesson-back" onClick={() => nav("/teacher/lesson-plan-agent")}>←</button><div className="lesson-workspace-title"><span className="lesson-eyebrow">LESSON PLAN AGENT</span><h1>{project.title}</h1></div><div className="lesson-workspace-status"><i /> {t("lessonPlan.workspace.autoSave")}</div><button className="lesson-button primary" onClick={() => void generate()} disabled={busy}>{busy ? t("lessonPlan.workspace.generating") : t("lessonPlan.workspace.generatePdf")}<b>↗</b></button></header><div className="lesson-workspace-grid"><aside className="lesson-pages"><div className="lesson-panel-head"><div><span className="lesson-eyebrow">OUTLINE</span><h2>{t("lessonPlan.workspace.outlineTitle")}</h2></div><strong>{pages.length}</strong></div>{pages.length ? pages.map((p, i) => <button className={`lesson-page-item ${i === active ? "active" : ""}`} key={p.id} onClick={() => setActive(i)}><span>{String(i + 1).padStart(2, "0")}</span><div><b>{p.title || t("lessonPlan.workspace.untitledPage")}</b><small>{i === active ? t("lessonPlan.workspace.viewing") : t("lessonPlan.workspace.clickToView")}</small></div></button>) : <div className="lesson-pages-empty">{t("lessonPlan.workspace.outlineEmpty")}</div>}</aside><main className="lesson-chat-panel"><div className="lesson-chat-head"><div><span className="lesson-eyebrow">CONVERSATION</span><h2>{t("lessonPlan.workspace.chatTitle")}</h2></div><span className="lesson-online"><i />{t("lessonPlan.workspace.online")}</span></div><div className="lesson-chat-stream">{chat.length ? chat.map((m, i) => <div className={`lesson-message ${m.role}`} key={`${i}-${m.text}`}><span>{m.role === "user" ? t("lessonPlan.workspace.you") : "Agent"}</span><p>{m.text}</p></div>) : <div className="lesson-chat-welcome"><div className="lesson-spark">✦</div><h3>{t("lessonPlan.workspace.welcomeTitle")}</h3><p>{t("lessonPlan.workspace.welcomeBody")}</p></div>}</div><div className="lesson-chat-composer"><textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder={t("lessonPlan.workspace.replyPlaceholder")} rows={2} /><div><span>{t("lessonPlan.workspace.enterHint")}</span><button className="lesson-send" onClick={() => void send()} disabled={!input.trim()}>↑</button></div></div></main><aside className="lesson-adjust-panel"><div className="lesson-panel-head"><div><span className="lesson-eyebrow">TEACHER CONTROL</span><h2>{t("lessonPlan.workspace.adjustTitle")}</h2></div><span className="lesson-adjust-dot">●</span></div><div className="lesson-adjust-content"><div className="lesson-adjust-illustration">✦</div><h3>{t("lessonPlan.workspace.adjustHeading")}</h3><p>{t("lessonPlan.workspace.adjustBody")}</p><div className="lesson-adjust-list"><span>✓ {t("lessonPlan.workspace.adjustEditContent")}</span><span>✓ {t("lessonPlan.workspace.adjustDifficulty")}</span><span>✓ {t("lessonPlan.workspace.adjustExportPdf")}</span></div></div></aside></div></div>;
+  const { projectId } = useParams<{ projectId?: string }>();
+  const navigate = useNavigate();
+  const { t } = useI18n();
+  const [projects, setProjects] = useState<LessonPlanProject[]>([]);
+  const [capabilities, setCapabilities] = useState<LessonPlanCapabilities | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<LessonPlanProject | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [list, caps] = await Promise.all([lessonPlanApi.projects(), lessonPlanApi.capabilities()]);
+      setProjects(list.data.items);
+      setCapabilities(caps.data);
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) void loadProjects();
+  }, [loadProjects, projectId]);
+
+  const createProject = useCallback(
+    async (text: string, files: File[]) => {
+      if (creating) return;
+      setCreating(true);
+      try {
+        const fallbackTitle = files[0]?.name.replace(/\.[^.]+$/, "").slice(0, 40) || "";
+        const { data } = await lessonPlanApi.createProject({ title: text.slice(0, 40) || fallbackTitle, request_text: text });
+        let uploaded = 0;
+        for (const file of files) {
+          try {
+            await lessonPlanApi.upload(data.id, file);
+            uploaded += 1;
+          } catch (uploadError: unknown) {
+            toast.error(getApiErrorMessage(uploadError, t("lessonPlan.toast.uploadFailed", { name: file.name })));
+          }
+        }
+        if (uploaded) toast.success(t(uploaded === 1 ? "lessonPlan.toast.uploadSuccess.one" : "lessonPlan.toast.uploadSuccess.other", { count: uploaded }));
+        navigate(`/teacher/lesson-plan-agent/${data.id}`);
+      } catch (createError: unknown) {
+        toast.error(getApiErrorMessage(createError, t("lessonPlan.toast.createFailed")));
+      } finally {
+        setCreating(false);
+      }
+    },
+    [creating, navigate, t],
+  );
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteCandidate || deleting) return;
+    setDeleting(true);
+    try {
+      await lessonPlanApi.deleteProject(deleteCandidate.id);
+      setProjects((items) => items.filter((item) => item.id !== deleteCandidate.id));
+      setDeleteCandidate(null);
+      toast.success(t("lessonPlan.toast.deleted"));
+    } catch (deleteError: unknown) {
+      toast.error(getApiErrorMessage(deleteError, t("lessonPlan.toast.deleteFailed")));
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteCandidate, deleting, t]);
+
+  if (projectId) return <LessonPlanWorkspace projectId={projectId} />;
+
+  return (
+    <>
+      <LessonPlanHome
+        projects={projects}
+        loading={loading}
+        error={error}
+        creating={creating}
+        capabilities={capabilities}
+        onRetry={() => void loadProjects()}
+        onCreate={(text, files) => void createProject(text, files)}
+        onOpen={(project) => navigate(`/teacher/lesson-plan-agent/${project.id}`)}
+        onDelete={setDeleteCandidate}
+      />
+      <HKUConfirmDialog
+        open={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => void confirmDelete()}
+        title={t("lessonPlan.dialog.deleteTitle")}
+        description={t("lessonPlan.dialog.deleteBody", { title: deleteCandidate?.title || "" })}
+        confirmLabel={t("lessonPlan.dialog.deleteConfirm")}
+        loading={deleting}
+      />
+    </>
+  );
 }

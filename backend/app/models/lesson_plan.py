@@ -17,7 +17,8 @@ def now_utc() -> datetime:
 class LessonPlanProject(Base):
     """Lesson plan project owned by one teacher.
 
-    Page documents use an A4 canvas (794x1123 at 96 dpi); children cascade
+    Page content is Markdown rendered to A4; ``settings_json`` holds the
+    interview answers, brief summary and degraded-mode flags.  Children cascade
     with the project.
     """
     __tablename__ = "lesson_plan_projects"
@@ -34,10 +35,11 @@ class LessonPlanProject(Base):
     settings_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
-    pages: Mapped[list["LessonPlanPage"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    pages: Mapped[list["LessonPlanPage"]] = relationship(back_populates="project", cascade="all, delete-orphan", order_by="LessonPlanPage.sort_order")
     assets: Mapped[list["LessonPlanAsset"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     events: Mapped[list["LessonPlanEvent"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     exports: Mapped[list["LessonPlanExportJob"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    messages: Mapped[list["LessonPlanMessage"]] = relationship(back_populates="project", cascade="all, delete-orphan", order_by="LessonPlanMessage.created_at")
 
 
 class LessonPlanPage(Base):
@@ -76,6 +78,18 @@ class LessonPlanEvent(Base):
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     project: Mapped[LessonPlanProject] = relationship(back_populates="events")
+
+
+class LessonPlanMessage(Base):
+    """One persisted interview/refinement turn for a lesson plan project."""
+    __tablename__ = "lesson_plan_messages"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("lesson_plan_projects.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="assistant")
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    project: Mapped[LessonPlanProject] = relationship(back_populates="messages")
 
 
 class LessonPlanExportJob(Base):

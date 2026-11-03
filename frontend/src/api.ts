@@ -339,6 +339,158 @@ export const pptApi = {
  */
 export type PptEditorAsset = { id: string; url: string; name: string; mime: string; width: number; height: number; size_bytes: number; sha256: string; alt?: string; source_url?: string; license?: string };
 /**
+ * Lesson plan agent types mirroring the FastAPI service.
+ *
+ * Pages are Markdown documents; ``markdown`` is a convenience mirror of
+ * ``document.markdown`` for rendering without unwrapping the document.
+ */
+export type LessonPlanStage = "init" | "collecting" | "ready" | "outline" | "exported";
+export type LessonPlanProject = {
+  id: string;
+  title: string;
+  request_text: string;
+  course_id: string | null;
+  current_stage: LessonPlanStage | string;
+  status: string;
+  page_size: string;
+  orientation: string;
+  template_id: string;
+  page_count: number;
+  brief_summary: string;
+  ready_to_generate: boolean;
+  degraded: boolean;
+  degraded_reason: string;
+  suggested_additions: string[];
+  created_at: string;
+  updated_at: string;
+};
+export type LessonPlanPageDocument = { version?: number; markdown?: string; elements?: { type?: string; text?: string }[]; [key: string]: unknown };
+export type LessonPlanQuestion = { code: string; label: string; options: string[] };
+export type LessonPlanMessagePayload = {
+  question?: LessonPlanQuestion | null;
+  ready_to_generate?: boolean;
+  degraded?: boolean;
+  suggested_additions?: string[];
+  page_updates?: string[];
+  needs_regenerate?: boolean;
+  intent_type?: string;
+  pages?: number;
+};
+export type LessonPlanPage = {
+  id: string;
+  title: string;
+  page_role: string;
+  sort_order: number;
+  document: LessonPlanPageDocument;
+  markdown: string;
+  revision: number;
+  status: string;
+};
+export type LessonPlanMessage = {
+  id: string;
+  role: "user" | "assistant" | string;
+  content_md: string;
+  payload: LessonPlanMessagePayload;
+  created_at: string;
+};
+export type LessonPlanAsset = {
+  id: string;
+  title: string;
+  source_type: string;
+  public_url: string | null;
+  status: string;
+  chars: number;
+  truncated: boolean;
+  mime_type: string;
+  document_id: string | null;
+  error: string;
+};
+export type LessonPlanCapabilities = { ai_configured: boolean; model: string | null };
+export type LessonPlanExportJob = { id: string; status: string; error: string; created_at: string };
+export type LessonPlanGenerateResult = {
+  project: LessonPlanProject;
+  pages: LessonPlanPage[];
+  summary_markdown: string;
+  degraded: boolean;
+  degraded_reason: string;
+};
+export type LessonPlanState = {
+  project: LessonPlanProject;
+  pages: LessonPlanPage[];
+  messages: LessonPlanMessage[];
+  answers: Record<string, unknown>;
+  brief_summary: string;
+  ready_to_generate: boolean;
+  suggested_additions: string[];
+  degraded: boolean;
+  degraded_reason: string;
+  assets: LessonPlanAsset[];
+  capabilities: LessonPlanCapabilities;
+  latest_export: LessonPlanExportJob | null;
+};
+export type LessonPlanChatComplete = {
+  message: LessonPlanMessage;
+  question: LessonPlanQuestion | null;
+  answers: Record<string, unknown>;
+  brief_summary: string;
+  ready_to_generate: boolean;
+  suggested_additions: string[];
+  page_updates?: string[];
+  needs_regenerate?: boolean;
+  degraded: boolean;
+  degraded_reason: string;
+  mode: "interview" | "refine";
+};
+export type LessonPlanChatStreamEvent = {
+  type: "status" | "chunk" | "complete" | "error";
+  status?: string;
+  chunk?: string;
+  detail?: string;
+  result?: LessonPlanChatComplete;
+};
+export type LessonPlanChatHandlers = {
+  onEvent?: (event: LessonPlanChatStreamEvent) => void;
+};
+/**
+ * Lesson plan agent endpoints.
+ *
+ * Generation and PDF rendering use a longer timeout than the axios default
+ * because both wait on the model or on headless Chromium.
+ */
+export const lessonPlanApi = {
+  capabilities: () => api.get<LessonPlanCapabilities>("/lesson-plans/capabilities"),
+  projects: () => api.get<{ items: LessonPlanProject[] }>("/lesson-plans/projects"),
+  createProject: (payload: { title?: string; request_text?: string; course_id?: string | null }) => api.post<LessonPlanProject>("/lesson-plans/projects", payload),
+  project: (id: string) => api.get<LessonPlanProject>(`/lesson-plans/projects/${id}`),
+  deleteProject: (id: string) => api.delete(`/lesson-plans/projects/${id}`),
+  state: (id: string) => api.get<LessonPlanState>(`/lesson-plans/projects/${id}/state`),
+  upload: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<LessonPlanAsset>(`/lesson-plans/projects/${id}/files`, form, { timeout: 120_000 });
+  },
+  deleteFile: (id: string, assetId: string) => api.delete(`/lesson-plans/projects/${id}/files/${assetId}`),
+  streamChat: async (id: string, payload: { content?: string; option_label?: string; bootstrap?: boolean }, handlers: LessonPlanChatHandlers = {}, signal?: AbortSignal) => {
+    const response = await fetch(`/api/lesson-plans/projects/${id}/chat/stream`, { method: "POST", headers: createStreamHeaders("application/json"), credentials: "include", body: JSON.stringify(payload), signal });
+    let complete: LessonPlanChatComplete | undefined;
+    let failure: string | undefined;
+    await consumeSse<LessonPlanChatStreamEvent>(response, (event) => {
+      handlers.onEvent?.(event);
+      if (event.type === "complete" && event.result) complete = event.result;
+      if (event.type === "error") failure = event.detail || translate("errors.agentExecutionFailed");
+    }, signal);
+    if (failure) throw new Error(failure);
+    return complete;
+  },
+  generate: (id: string, payload: { page_count?: number; include_answers?: boolean; instruction?: string } = {}) => api.post<LessonPlanGenerateResult>(`/lesson-plans/projects/${id}/generate`, payload, { timeout: 180_000 }),
+  regeneratePage: (id: string, pageId: string, instruction = "") => api.post<{ page: LessonPlanPage; degraded: boolean; degraded_reason: string }>(`/lesson-plans/projects/${id}/pages/${pageId}/regenerate`, { instruction }, { timeout: 180_000 }),
+  savePage: (id: string, pageId: string, payload: { document: LessonPlanPageDocument; revision: number }) => api.patch<LessonPlanPage>(`/lesson-plans/projects/${id}/pages/${pageId}/document`, payload),
+  exportPdf: (id: string, payload: { include_answers: boolean; black_white: boolean }) => api.post<LessonPlanExportJob>(`/lesson-plans/projects/${id}/exports`, payload, { timeout: 180_000 }),
+  exportStatus: (id: string, exportId: string) => api.get<LessonPlanExportJob>(`/lesson-plans/projects/${id}/exports/${exportId}`),
+  downloadPdf: (id: string, exportId: string) => api.get<Blob>(`/lesson-plans/projects/${id}/exports/${exportId}/download`, { responseType: "blob", timeout: 120_000 }),
+  downloadMarkdown: (id: string, includeAnswers: boolean) => api.get<Blob>(`/lesson-plans/projects/${id}/markdown`, { params: { include_answers: includeAnswers }, responseType: "blob", timeout: 120_000 }),
+};
+/**
  * Admin AI provider and business binding endpoints.
  */
 export const adminAiApi = {

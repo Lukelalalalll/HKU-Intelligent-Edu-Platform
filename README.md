@@ -215,6 +215,21 @@ VISUAL_SEARCH_PROXY=http://127.0.0.1:7890
 
 课程代号统一为四位英文字母加四位数字（例如 `COMP2119`）；升级数据库时，旧的不合规代号会自动替换为唯一的 `COUR0001`、`COUR0002` 等代号并保留课程关联数据。
 
+## 学案 Agent
+
+教师登录后打开 `/teacher/lesson-plan-agent`。可以只输入 prompt、只上传资料，或两者混合：Agent 先通过流式对话澄清学段/年级、学科、学习目标、课堂时长、页数与答案需求，再生成 1–6 页 A4 学案，支持逐页预览、Markdown 编辑、单页重写，最后导出 PDF 或 Markdown。
+
+- 资料支持 PDF、DOCX、PPTX、XLSX、Markdown、CSV、TXT；上传后同步抽取文本并作为对话与生成上下文，不依赖 Celery worker 也能工作。
+- 页面内容以 Markdown 保存；`> [!answer]` 答案块会随「包含参考答案」开关出现在预览、PDF 和 Markdown 中。
+- PDF 由服务端 Chromium 按 A4 排版渲染。本地开发需要执行 `cd backend && python -m playwright install chromium`；容器镜像已安装 Chromium 与 Noto CJK 字体。
+- AI 模型通过管理员「AI 控制台」按业务 `teacher_lesson_plan_agent` 绑定。未配置 Key 或模型不可用时，功能进入**本地模板模式**：仍可完成对话、生成、编辑和导出，界面会显示提示。
+- 新增迁移 `0021_lesson_plan_agent`；升级已有数据库请执行 `cd backend && alembic upgrade head`。该迁移会补建缺失的学案表，不会删除既有数据。
+
+主要接口：`GET/POST /api/lesson-plans/projects`、`GET /api/lesson-plans/projects/{id}/state`、
+`POST /api/lesson-plans/projects/{id}/chat/stream`、`POST /api/lesson-plans/projects/{id}/generate`、
+`POST /api/lesson-plans/projects/{id}/files`、`POST /api/lesson-plans/projects/{id}/exports`、
+`GET /api/lesson-plans/projects/{id}/markdown`。
+
 ## Zoom 实时课堂
 
 课程详情页支持按排课时间进入嵌入式 Zoom Meeting SDK。教师先点击“准备 Zoom 课堂”，平台会为每条排课创建或同步一个周循环会议；开放时间为课前 15 分钟至课后 30 分钟。需要在 `backend/.env` 配置 Zoom Server-to-Server OAuth、Meeting SDK 和 Webhook 凭据（字段见 `.env.example`）。未配置凭据时，页面会安全地显示待配置状态，不会向浏览器暴露 Zoom Secret 或主持人启动链接。

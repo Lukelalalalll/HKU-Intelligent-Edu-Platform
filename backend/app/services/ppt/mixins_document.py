@@ -1,6 +1,7 @@
 """Document mixin: page summaries, slide documents and design quality checks."""
 
 from .context import *  # noqa: F401,F403
+from app.services.text_extraction import extract_text
 
 class _DocumentMixin:
     @staticmethod
@@ -269,36 +270,11 @@ class _DocumentMixin:
     def _extract_text(self, path: Path, content: bytes) -> str:
         """Extract text per file type, returning a placeholder on soft failures.
 
-        Office, PDF and image extraction are best-effort so the upload itself
-        still succeeds; images fall back to a vision call when the provider
-        supports it.
+        Plain documents go through the shared extractor; images keep the
+        vision-model branch because only this agent carries a provider gateway.
         """
-        if path.suffix.lower() in {".txt", ".md", ".markdown", ".csv"}: return content.decode("utf-8", errors="ignore")
-        if path.suffix.lower() == ".json":
-            try: return json.dumps(json.loads(content.decode("utf-8", errors="ignore")), ensure_ascii=False, indent=2)
-            except Exception: return content.decode("utf-8", errors="ignore")
-        if path.suffix.lower() in {".xlsx", ".xls"}:
-            try:
-                from openpyxl import load_workbook
-                book = load_workbook(path, read_only=True, data_only=True)
-                return "\n".join(" | ".join(str(value or "") for value in row) for sheet in book.worksheets for row in sheet.iter_rows(values_only=True))
-            except Exception: return ""
-        if path.suffix.lower() == ".pdf":
-            try:
-                import pypdf
-                return "\n".join((page.extract_text() or "") for page in pypdf.PdfReader(str(path)).pages)
-            except Exception: return "PDF 已上传，统一文件处理任务正在生成页级内容。"
-        if path.suffix.lower() == ".docx":
-            try:
-                from docx import Document
-                return "\n".join(p.text for p in Document(str(path)).paragraphs)
-            except Exception: return "DOCX 已上传，统一文件处理任务正在生成结构化内容。"
-        if path.suffix.lower() == ".pptx":
-            try:
-                from pptx import Presentation
-                return "\n".join(shape.text for slide in Presentation(str(path)).slides for shape in slide.shapes if hasattr(shape, "text"))
-            except Exception: return "PPTX 已上传，统一文件处理任务正在生成幻灯片内容。"
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+        suffix = path.suffix.lower()
+        if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
             # Vision is best-effort: the original image remains available even
             # when the configured provider does not support image inputs.
             try:
@@ -306,10 +282,19 @@ class _DocumentMixin:
                 gateway = ProviderGateway(self.db, self.user.id)
                 client = gateway._client()
                 model = gateway.config.model if gateway.config else settings.llm_model
-                mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
+                mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[suffix]
                 response = client.chat.completions.create(model=model, temperature=0.1, messages=[{"role": "user", "content": [{"type": "text", "text": "请提取图片中的文字，并描述图表、关键视觉信息和可用于教学课件的要点。"}, {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(content).decode()}"}}]}])
                 return response.choices[0].message.content or "图片资料（未提取到文字）"
             except Exception:
                 return "图片资料已上传；当前模型不支持视觉解析，请教师在对话中补充图片要点。"
-        return ""
+        text = extract_text(path, content)
+        if text:
+            return text
+        # Preserve the historical placeholders so an unreadable office file
+        # still tells the teacher that the background parser will follow up.
+        return {
+            ".pdf": "PDF 已上传，统一文件处理任务正在生成页级内容。",
+            ".docx": "DOCX 已上传，统一文件处理任务正在生成结构化内容。",
+            ".pptx": "PPTX 已上传，统一文件处理任务正在生成幻灯片内容。",
+        }.get(suffix, "")
 

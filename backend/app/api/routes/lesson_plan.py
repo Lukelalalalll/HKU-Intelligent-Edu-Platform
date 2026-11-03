@@ -1,186 +1,197 @@
-"""Lesson plan routes: project lifecycle, page documents and PDF export.
+"""Lesson plan agent routes: projects, materials, chat, generation and export.
 
-All endpoints are teacher-only.  Exports render page documents in headless
-Chromium and are tracked by ``LessonPlanExportJob``.
+Every endpoint is teacher-only.  Handlers stay thin: the workflow lives in
+:class:`app.services.lesson_plan.LessonPlanService`, while this module owns
+HTTP concerns (status codes, streaming, file responses).
 """
 
-import asyncio, json
+import asyncio
+import json
 from pathlib import Path
-from fastapi import APIRouter, Depends, File, UploadFile, Query
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import select
+
 from app.api.deps import require_roles
 from app.db.session import get_db
-from app.models import User, UserRole, LessonPlanProject, LessonPlanPage, LessonPlanAsset, LessonPlanEvent
+from app.models import LessonPlanEvent, User, UserRole
+from app.schemas.lesson_plan import (
+    ChatIn,
+    ExportIn,
+    GenerateIn,
+    PageDocumentIn,
+    ProjectCreateIn,
+    RegeneratePageIn,
+)
 from app.services.lesson_plan import LessonPlanService
-from app.core.config import settings
-from app.models import LessonPlanExportJob
 
 router = APIRouter(prefix="/api/lesson-plans", tags=["lesson-plans"])
 teacher = Depends(require_roles(UserRole.teacher))
 
-class ProjectIn(BaseModel):
-    """Payload for creating a lesson plan project."""
-    title: str = "未命名学案"
-    request_text: str = ""
-    course_id: str | None = None
-class DocumentIn(BaseModel):
-    """Payload replacing one page document at a known revision."""
-    document: dict
-    revision: int = 1
-class ProviderIn(BaseModel):
-    """Payload describing an OpenAI-compatible provider."""
-    base_url: str
-    api_key: str | None = None
-    model: str
-    image_model: str = ""
-    timeout_seconds: int = 120
-class ExportIn(BaseModel):
-    """Payload for a PDF export request."""
-    include_answers: bool = True
-    black_white: bool = False
-class ChatIn(BaseModel):
-    """Payload carrying one requirement-chat turn."""
-    content: str = ""
 
-def svc(db=Depends(get_db), user: User = teacher):
-    """Build the project service bound to the request session and teacher."""
+def svc(db=Depends(get_db), user: User = teacher) -> LessonPlanService:
+    """Build the service bound to the request session and teacher."""
     return LessonPlanService(db, user)
 
-@router.get("/projects")
-def list_projects(service=Depends(svc)):
-    """List the caller's projects, most recently updated first."""
-    rows = service.db.scalars(select(LessonPlanProject).where(LessonPlanProject.owner_id == service.user.id).order_by(LessonPlanProject.updated_at.desc()))
-    return {"items": [service.serialize(p) for p in rows]}
 
+@router.get("/capabilities")
+def capabilities(service: LessonPlanService = Depends(svc)) -> dict:
+    """Report whether the lesson-plan business has a usable AI model."""
+    return service.capabilities()
+
+
+# List the caller's projects, most recently updated first.
+@router.get("/projects")
+def list_projects(service: LessonPlanService = Depends(svc)) -> dict:
+    """List the caller's lesson plan projects."""
+    return {"items": service.list_projects()}
+
+
+# Create an empty lesson plan project.
 @router.post("/projects", status_code=201)
-def create_project(payload: ProjectIn, service=Depends(svc)):
-    """Create an empty lesson plan project."""
+def create_project(payload: ProjectCreateIn, service: LessonPlanService = Depends(svc)) -> dict:
+    """Create a project from the teacher's brief."""
     return service.create(payload.title, payload.request_text, payload.course_id)
 
+
 @router.get("/projects/{project_id}")
-def get_project(project_id: str, service=Depends(svc)):
-    """Return one project with its pages."""
-    return service.serialize(service.project(project_id))
+def get_project(project_id: str, service: LessonPlanService = Depends(svc)) -> dict:
+    """Return one project summary."""
+    project = service.project(project_id)
+    return service.serialize(project)
+
 
 @router.delete("/projects/{project_id}")
-def delete_project(project_id: str, service=Depends(svc)):
+def delete_project(project_id: str, service: LessonPlanService = Depends(svc)) -> dict:
     """Delete a project owned by the caller."""
-    p = service.project(project_id); service.db.delete(p); service.db.commit(); return {"ok": True}
+    return service.delete(project_id)
 
-@router.post("/projects/{project_id}/generate")
-def generate(project_id: str, service=Depends(svc)):
-    """Generate pages for a project through the lesson plan service."""
-    return service.run(project_id)
 
-@router.post("/projects/{project_id}/requirements/chat")
-def requirements_chat(project_id: str, payload: ChatIn, service=Depends(svc)):
-    """Record one requirement answer and return the next question.
+@router.get("/projects/{project_id}/state")
+def project_state(project_id: str, service: LessonPlanService = Depends(svc)) -> dict:
+    """Return the complete workspace state in one request."""
+    return service.state(project_id)
 
-    After three answers the interview is treated as ready.
-    """
-    p = service.project(project_id); history = list((p.settings_json or {}).get("chat", []));
-    if payload.content.strip(): history.append(payload.content.strip())
-    p.settings_json = {**(p.settings_json or {}), "chat": history}; service.db.commit()
-    questions = ["这份学案面向哪个年级和学科？", "希望学生完成哪些学习任务（讲解、练习、实验或探究）？", "你希望最终打印成几页，是否需要答案区？"]
-    index = min(len(history), len(questions) - 1)
-    ready = len(history) >= 3
-    return {"message": questions[index] if not ready else "需求已整理完成，可以开始生成学案。", "ready": ready, "history": history}
 
 @router.get("/projects/{project_id}/pages")
-def pages(project_id: str, service=Depends(svc)):
+def pages(project_id: str, service: LessonPlanService = Depends(svc)) -> dict:
     """List page documents in display order."""
-    p = service.project(project_id)
-    return {"items": [{"id": x.id, "title": x.title, "page_role": x.page_role, "sort_order": x.sort_order, "document": x.document_json, "revision": x.revision, "status": x.status} for x in sorted(p.pages, key=lambda x: x.sort_order)]}
+    return {"items": service.list_pages(project_id)}
 
-@router.patch("/projects/{project_id}/pages/{page_id}/document")
-def patch_document(project_id: str, page_id: str, payload: DocumentIn, service=Depends(svc)):
-    """Replace one page document with optimistic revision checking.
-
-    Raises:
-        HTTPException: 404 for an unknown page, 409 when the revision is stale.
-    """
-    from fastapi import HTTPException
-    p = service.project(project_id); page = service.db.scalar(select(LessonPlanPage).where(LessonPlanPage.id == page_id, LessonPlanPage.project_id == p.id))
-    if not page: raise HTTPException(404, "页面不存在")
-    if payload.revision != page.revision: raise HTTPException(409, "页面已被更新，请刷新后重试")
-    page.document_json = payload.document; page.revision += 1; page.status = "edited"; service.db.commit()
-    return {"id": page.id, "document": page.document_json, "revision": page.revision, "status": page.status}
 
 @router.post("/projects/{project_id}/files", status_code=201)
-def upload(project_id: str, file: UploadFile = File(...), service=Depends(svc)):
-    """Store an uploaded asset under the project directory."""
-    p = service.project(project_id); root = settings.ppt_storage_path / "lesson_plans" / p.id / "assets"; root.mkdir(parents=True, exist_ok=True)
-    name = Path(file.filename or "asset.bin").name; path = root / name; path.write_bytes(file.file.read())
-    asset = LessonPlanAsset(project_id=p.id, source_type="upload", title=name, file_path=str(path), public_url=f"/api/lesson-plans/projects/{p.id}/assets/{name}"); service.db.add(asset); service.db.commit(); service.db.refresh(asset)
-    return {"id": asset.id, "title": asset.title, "public_url": asset.public_url, "source_type": asset.source_type}
+def upload_file(project_id: str, file: UploadFile = File(...), service: LessonPlanService = Depends(svc)) -> dict:
+    """Store one uploaded material and extract its text for the conversation."""
+    return service.add_file(project_id, file)
 
-@router.get("/projects/{project_id}/assets/{filename}")
-def asset(project_id: str, filename: str, service=Depends(svc)):
-    """Serve an uploaded project asset by file name."""
-    p = service.project(project_id); return FileResponse(settings.ppt_storage_path / "lesson_plans" / p.id / "assets" / Path(filename).name)
+
+@router.delete("/projects/{project_id}/files/{asset_id}")
+def delete_file(project_id: str, asset_id: str, service: LessonPlanService = Depends(svc)) -> dict:
+    """Remove one material from the project corpus."""
+    return service.delete_file(project_id, asset_id)
+
+
+@router.get("/projects/{project_id}/assets/{asset_id}")
+def download_asset(project_id: str, asset_id: str, service: LessonPlanService = Depends(svc)):
+    """Serve an uploaded material after ownership checks."""
+    path = service.asset_path(project_id, asset_id)
+    return FileResponse(path, filename=Path(path).name, media_type="application/octet-stream")
+
+
+@router.post("/projects/{project_id}/chat/stream")
+def chat_stream(project_id: str, payload: ChatIn, service: LessonPlanService = Depends(svc)):
+    """Stream one interview/refinement turn as server-sent events."""
+    service.project(project_id)
+
+    def event_stream():
+        try:
+            yield f"data: {json.dumps({'type': 'status', 'status': '正在理解你的需求'}, ensure_ascii=False)}\n\n"
+            for event in service.interview_stream(project_id, payload.content, payload.bootstrap, payload.option_label):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001 - the stream must always terminate cleanly
+            service.db.rollback()
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)[:300]}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/projects/{project_id}/requirements/chat")
+def requirements_chat(project_id: str, payload: ChatIn, service: LessonPlanService = Depends(svc)) -> dict:
+    """Non-streaming interview turn kept for compatibility and tests."""
+    return service.interview(project_id, payload.content, payload.bootstrap, payload.option_label)
+
+
+@router.post("/projects/{project_id}/generate")
+def generate(project_id: str, payload: GenerateIn | None = None, service: LessonPlanService = Depends(svc)) -> dict:
+    """Generate (or replace) the lesson plan pages."""
+    body = payload or GenerateIn()
+    return service.generate(project_id, body.page_count, body.include_answers, body.instruction)
+
+
+@router.post("/projects/{project_id}/pages/{page_id}/regenerate")
+def regenerate_page(project_id: str, page_id: str, payload: RegeneratePageIn | None = None, service: LessonPlanService = Depends(svc)) -> dict:
+    """Rewrite one page with an optional teacher instruction."""
+    body = payload or RegeneratePageIn()
+    return service.regenerate_page(project_id, page_id, body.instruction)
+
+
+@router.patch("/projects/{project_id}/pages/{page_id}/document")
+def patch_document(project_id: str, page_id: str, payload: PageDocumentIn, service: LessonPlanService = Depends(svc)) -> dict:
+    """Replace one page document with optimistic revision checking."""
+    return service.patch_page(project_id, page_id, payload.document, payload.revision)
+
 
 @router.post("/projects/{project_id}/exports", status_code=202)
-def export_project(project_id: str, payload: ExportIn, service=Depends(svc)):
-    """Render the project to PDF and record the export job.
+def export_project(project_id: str, payload: ExportIn | None = None, service: LessonPlanService = Depends(svc)) -> dict:
+    """Render the project to PDF and record the export job."""
+    body = payload or ExportIn()
+    return service.export_pdf(project_id, body.include_answers, body.black_white)
 
-    The job row is written as running, then completed or failed before the
-    response returns.
-    """
-    p = service.project(project_id); root = settings.ppt_storage_path / "lesson_plans" / p.id; root.mkdir(parents=True, exist_ok=True)
-    job = LessonPlanExportJob(project_id=p.id, status="running"); service.db.add(job); service.db.flush()
-    css = "@page{size:A4;margin:0}body{margin:0;font-family:Arial,'Microsoft YaHei',sans-serif}.page{width:210mm;height:297mm;position:relative;page-break-after:always;overflow:hidden;background:#fff}.el{position:absolute;white-space:pre-wrap;overflow:hidden}" + ("*{filter:grayscale(1)}" if payload.black_white else "")
-    pages_html = []
-    for page in sorted(p.pages, key=lambda x: x.sort_order):
-        els = []
-        for el in (page.document_json or {}).get("elements", []):
-            text = str(el.get("text") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            style = f"left:{el.get('x',0)}%;top:{el.get('y',0)}%;width:{el.get('w',100)}%;height:{el.get('h',10)}%;font-size:{el.get('font_size',16)}px;font-weight:{el.get('font_weight',400)};color:{el.get('color','#163d31')}"
-            els.append(f'<div class="el" style="{style}">{text}</div>')
-        pages_html.append('<section class="page">' + ''.join(els) + '</section>')
-    html = f"<!doctype html><meta charset='utf-8'><style>{css}</style>" + ''.join(pages_html)
-    html_path = root / f"lesson-plan-{job.id}.html"; pdf_path = root / f"lesson-plan-{job.id}.pdf"; html_path.write_text(html, encoding="utf-8")
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True); page = browser.new_page(); page.set_content(html, wait_until="networkidle"); page.pdf(path=str(pdf_path), format="A4", print_background=True, prefer_css_page_size=True); browser.close()
-        job.status="completed"; job.html_path=str(html_path); job.pdf_path=str(pdf_path); service.db.add(LessonPlanEvent(project_id=p.id,event_type="export.completed",payload_json={"job_id":job.id})); service.db.commit()
-    except Exception as exc:
-        job.status="failed"; job.error_message=str(exc); service.db.commit()
-    return {"id": job.id, "status": job.status}
 
 @router.get("/projects/{project_id}/exports/{export_id}")
-def export_status(project_id: str, export_id: str, service=Depends(svc)):
+def export_status(project_id: str, export_id: str, service: LessonPlanService = Depends(svc)) -> dict:
     """Return the status of one export job."""
-    p=service.project(project_id); job=service.db.scalar(select(LessonPlanExportJob).where(LessonPlanExportJob.id==export_id, LessonPlanExportJob.project_id==p.id))
-    if not job: from fastapi import HTTPException; raise HTTPException(404,"导出任务不存在")
-    return {"id":job.id,"status":job.status,"error":job.error_message}
+    return service.serialize_export(service.export_job(project_id, export_id))
+
 
 @router.get("/projects/{project_id}/exports/{export_id}/download")
-def download_export(project_id: str, export_id: str, service=Depends(svc)):
-    """Download the PDF of a completed export.
+def download_export(project_id: str, export_id: str, service: LessonPlanService = Depends(svc)):
+    """Download the PDF of a completed export."""
+    return FileResponse(service.export_path(project_id, export_id), filename="lesson-plan.pdf", media_type="application/pdf")
 
-    Raises:
-        HTTPException: 409 while the export is unfinished.
-    """
-    p=service.project(project_id); job=service.db.scalar(select(LessonPlanExportJob).where(LessonPlanExportJob.id==export_id, LessonPlanExportJob.project_id==p.id))
-    if not job or job.status != "completed": from fastapi import HTTPException; raise HTTPException(409,"导出尚未完成")
-    return FileResponse(job.pdf_path, filename="lesson-plan.pdf", media_type="application/pdf")
+
+@router.get("/projects/{project_id}/markdown")
+def download_markdown(project_id: str, include_answers: bool = Query(default=True), service: LessonPlanService = Depends(svc)) -> Response:
+    """Download the lesson plan as Markdown."""
+    filename, content = service.export_markdown(project_id, include_answers)
+    disposition = f"attachment; filename=\"lesson-plan.md\"; filename*=UTF-8''{quote(filename)}"
+    return Response(content=content, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": disposition})
+
 
 @router.get("/projects/{project_id}/events/stream")
-async def events(project_id: str, last_event_id: int = Query(0), service=Depends(svc)):
-    """Stream new lesson plan events for a project over SSE.
-
-    The generator polls for up to about 60 seconds and then ends so the client
-    can reconnect.
-    """
+async def events(project_id: str, last_event_id: int = Query(0), service: LessonPlanService = Depends(svc)) -> StreamingResponse:
+    """Stream new lesson plan events for a project over SSE."""
     service.project(project_id)
-    async def gen():
+
+    async def generator():
         current = last_event_id
         for _ in range(120):
-            rows = list(service.db.scalars(select(LessonPlanEvent).where(LessonPlanEvent.project_id == project_id, LessonPlanEvent.id > current).order_by(LessonPlanEvent.id)))
+            rows = list(
+                service.db.scalars(
+                    select(LessonPlanEvent)
+                    .where(LessonPlanEvent.project_id == project_id, LessonPlanEvent.id > current)
+                    .order_by(LessonPlanEvent.id)
+                )
+            )
             for row in rows:
-                current = row.id; yield f"id: {row.id}\ndata: {json.dumps({'id': row.id, 'event_type': row.event_type, 'payload': row.payload_json}, ensure_ascii=False)}\n\n"
-            await asyncio.sleep(.5)
-    return StreamingResponse(gen(), media_type="text/event-stream")
+                current = row.id
+                yield f"id: {row.id}\ndata: {json.dumps({'id': row.id, 'event_type': row.event_type, 'payload': row.payload_json}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(generator(), media_type="text/event-stream")

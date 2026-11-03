@@ -21,8 +21,9 @@ export default function Shell() {
     writeSidebarCollapsed(next);
     return next;
   });
-  const isStudio = location.pathname.startsWith("/teacher/courseware-agent");
-  const isStudioFocus = /^\/teacher\/courseware-agent\/[^/]+\/?$/.test(location.pathname);
+  // Both teacher agents own a full-height workspace on their project routes.
+  const isStudio = location.pathname.startsWith("/teacher/courseware-agent") || location.pathname.startsWith("/teacher/lesson-plan-agent");
+  const isStudioFocus = /^\/teacher\/(?:courseware-agent|lesson-plan-agent)\/[^/]+\/?$/.test(location.pathname);
   const links: SidebarItem[] = [
     { to: user?.role === "teacher" ? "/teacher" : "/", label: t("common.nav.overview"), roles: ["teacher", "student", "admin"], icon: "overview" },
     { to: "/courses", label: user?.role === "teacher" ? t("common.nav.myCourses") : t("common.nav.courses"), roles: ["teacher", "student", "admin"], icon: "courses" },
