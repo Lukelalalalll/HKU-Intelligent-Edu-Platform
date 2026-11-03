@@ -1,3 +1,9 @@
+"""Assignment routes: publishing, attachments, submissions and grading views.
+
+Authorization is per course: the owning teacher or an admin manages
+assignments, and submitting requires an enrolled student.
+"""
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
@@ -14,6 +20,12 @@ router = APIRouter(prefix="/api/courses/{course_id}/assignments", tags=["assignm
 
 @router.get("", response_model=list[AssignmentOut])
 def list_assignments(course_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """List the assignments of a course the caller may see.
+
+    Raises:
+        HTTPException: 404 for an unknown course, 403 when the caller is not
+            the course teacher or an enrolled student.
+    """
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(404, "Course not found")
@@ -25,14 +37,25 @@ def list_assignments(course_id: str, user: User = Depends(current_user), db: Ses
     return [_out(x) for x in rows]
 
 def _out(a: Assignment):
+    """Serialize an assignment with its attachments and download links."""
     return {"id": a.id, "course_id": a.course_id, "title": a.title, "description": a.description, "due_at": a.due_at, "max_score": a.max_score, "status": a.status, "attachments": [{"id": x.id, "file_asset_id": x.file_asset_id, "file_name": x.file_asset.original_name, "mime_type": x.file_asset.mime_type, "size_bytes": x.file_asset.size_bytes, "download_url": f"/api/courses/{a.course_id}/assignments/{a.id}/attachments/{x.id}/download"} for x in a.attachments]}
 
 
 def _submission_out(item: Submission, db: Session) -> dict:
+    """Serialize a submission with attachment metadata and links."""
     return {"id": item.id, "assignment_id": item.assignment_id, "student_id": item.student_id, "content": item.content, "file_asset_id": item.file_asset_id, "submitted_at": item.submitted_at, "score": item.score, "feedback": item.feedback, "attachments": [{"id": x.id, "file_asset_id": x.file_asset_id, "file_name": db.get(FileAsset, x.file_asset_id).original_name if db.get(FileAsset, x.file_asset_id) else "", "document_id": x.document_id} for x in db.scalars(select(SubmissionAttachment).where(SubmissionAttachment.submission_id == item.id).order_by(SubmissionAttachment.sort_order)).all()]}
 
 @router.post("", response_model=AssignmentOut, status_code=201)
 def create_assignment(course_id: str, payload: AssignmentCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Publish an assignment owned by the course teacher.
+
+    Binds uploaded assets to the new assignment and returns it with its
+    attachments.
+
+    Raises:
+        HTTPException: 403 when the caller does not own the course, 404 when an
+            asset is missing or was uploaded by someone else.
+    """
     course = db.get(Course, course_id)
     if not course:
         raise HTTPException(404, "Course not found")
@@ -55,6 +78,11 @@ def create_assignment(course_id: str, payload: AssignmentCreate, user: User = De
 
 @router.post("/{assignment_id}/attachments", status_code=201)
 def add_attachment(course_id: str, assignment_id: str, file_asset_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Append an owned asset to an existing assignment.
+
+    Raises:
+        HTTPException: 404 when the assignment or asset is not accessible.
+    """
     assignment = db.scalar(select(Assignment).where(Assignment.id == assignment_id, Assignment.course_id == course_id))
     if not assignment or (user.role != UserRole.admin and assignment.teacher_id != user.id): raise HTTPException(404, "Assignment not found")
     asset = db.get(FileAsset, file_asset_id)
@@ -66,12 +94,22 @@ def add_attachment(course_id: str, assignment_id: str, file_asset_id: str, user:
 
 @router.delete("/{assignment_id}/attachments/{attachment_id}", status_code=204)
 def remove_attachment(course_id: str, assignment_id: str, attachment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Remove an assignment attachment; the asset row is kept.
+
+    Raises:
+        HTTPException: 404 when the attachment is not accessible.
+    """
     item = db.scalar(select(AssignmentAttachment).join(Assignment).where(AssignmentAttachment.id == attachment_id, Assignment.id == assignment_id, Assignment.course_id == course_id))
     if not item or (user.role != UserRole.admin and item.assignment.teacher_id != user.id): raise HTTPException(404, "Attachment not found")
     db.delete(item); db.commit()
 
 @router.get("/{assignment_id}/attachments/{attachment_id}/download")
 def download_attachment(course_id: str, assignment_id: str, attachment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Stream an attachment to the course teacher or an enrolled student.
+
+    Raises:
+        HTTPException: 403 when a student is not enrolled in the course.
+    """
     assignment = db.scalar(select(Assignment).where(Assignment.id == assignment_id, Assignment.course_id == course_id))
     if not assignment: raise HTTPException(404, "Assignment not found")
     if user.role == UserRole.student and not db.scalar(select(Enrollment).where(Enrollment.course_id == course_id, Enrollment.student_id == user.id)): raise HTTPException(403, "Not enrolled")
@@ -83,6 +121,14 @@ def download_attachment(course_id: str, assignment_id: str, attachment_id: str, 
 
 @router.post("/{assignment_id}/submissions", response_model=SubmissionOut, status_code=201)
 def submit_assignment(course_id: str, assignment_id: str, payload: SubmissionCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Create or replace the caller's submission for an assignment.
+
+    A repeated submit updates the text and file reference and appends only new
+    attachments, so the endpoint stays idempotent per student and assignment.
+
+    Raises:
+        HTTPException: 403 when the caller is not an enrolled student.
+    """
     if user.role != UserRole.student:
         raise HTTPException(403, "Only students can submit assignments")
     assignment = db.scalar(select(Assignment).where(Assignment.id == assignment_id, Assignment.course_id == course_id))
@@ -129,6 +175,7 @@ def submit_assignment(course_id: str, assignment_id: str, payload: SubmissionCre
 
 @router.post("/{assignment_id}/submissions/{submission_id}/attachments", status_code=201)
 def add_submission_attachments(course_id: str, assignment_id: str, submission_id: str, files: list[UploadFile] = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Upload extra files to the caller's own submission."""
     if user.role != UserRole.student: raise HTTPException(403, "Only students can submit assignments")
     assignment = db.scalar(select(Assignment).where(Assignment.id == assignment_id, Assignment.course_id == course_id))
     submission = db.scalar(select(Submission).where(Submission.id == submission_id, Submission.assignment_id == assignment_id, Submission.student_id == user.id))
@@ -147,6 +194,11 @@ def add_submission_attachments(course_id: str, assignment_id: str, submission_id
 
 @router.get("/{assignment_id}/submissions", response_model=list[SubmissionOut])
 def list_submissions(course_id: str, assignment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """List submissions for the course teacher or an admin.
+
+    Raises:
+        HTTPException: 403 when the caller does not own the assignment.
+    """
     assignment = db.get(Assignment, assignment_id)
     if not assignment or assignment.course_id != course_id:
         raise HTTPException(404, "Assignment not found")

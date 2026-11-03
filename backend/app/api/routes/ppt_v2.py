@@ -21,31 +21,38 @@ teacher = Depends(require_roles(UserRole.teacher))
 
 
 def generation_svc(db: Session = Depends(get_db), user: User = teacher) -> GenerationService:
+    """Dependency factory returning a generation service for the teacher."""
     return GenerationService(db, user)
 
 def export_svc(db: Session = Depends(get_db), user: User = teacher) -> ExportService:
+    """Dependency factory returning an export service for the teacher."""
     return ExportService(db, user)
 
 
 def _job_envelope(job: dict) -> dict:
+    """Reduce a job record to the v2 job envelope."""
     return {"job_id": job.get("id"), "status": "queued"}
 
 
 @router.post("/projects/{project_id}/generation", status_code=status.HTTP_202_ACCEPTED)
 def start_generation(project_id: str, service: GenerationService = Depends(generation_svc)):
+    """Queue deck generation and return a job envelope."""
     return _job_envelope(service.start_generation(project_id))
 
 
 @router.post("/projects/{project_id}/visual-research", status_code=status.HTTP_202_ACCEPTED)
 def start_visual_research(project_id: str, service: GenerationService = Depends(generation_svc)):
+    """Queue visual research and return a job envelope."""
     return _job_envelope(service.start_visual_research(project_id))
 
 
 @router.get("/projects/{project_id}/jobs/{job_id}")
 def get_job(project_id: str, job_id: str, service: GenerationService = Depends(generation_svc)):
+    """Return the current state of a generation or visual-research job."""
     return service.generation_job(project_id, job_id)
 
 
 @router.post("/projects/{project_id}/exports", status_code=status.HTTP_202_ACCEPTED)
 def start_export(project_id: str, payload: ExportIn, service: ExportService = Depends(export_svc)):
+    """Queue a PPTX export and return its job record."""
     return service.enqueue(project_id, payload.filename)

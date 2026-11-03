@@ -1,3 +1,9 @@
+"""Lesson plan routes: project lifecycle, page documents and PDF export.
+
+All endpoints are teacher-only.  Exports render page documents in headless
+Chromium and are tracked by ``LessonPlanExportJob``.
+"""
+
 import asyncio, json
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, Query
@@ -15,50 +21,65 @@ router = APIRouter(prefix="/api/lesson-plans", tags=["lesson-plans"])
 teacher = Depends(require_roles(UserRole.teacher))
 
 class ProjectIn(BaseModel):
+    """Payload for creating a lesson plan project."""
     title: str = "未命名学案"
     request_text: str = ""
     course_id: str | None = None
 class DocumentIn(BaseModel):
+    """Payload replacing one page document at a known revision."""
     document: dict
     revision: int = 1
 class ProviderIn(BaseModel):
+    """Payload describing an OpenAI-compatible provider."""
     base_url: str
     api_key: str | None = None
     model: str
     image_model: str = ""
     timeout_seconds: int = 120
 class ExportIn(BaseModel):
+    """Payload for a PDF export request."""
     include_answers: bool = True
     black_white: bool = False
 class ChatIn(BaseModel):
+    """Payload carrying one requirement-chat turn."""
     content: str = ""
 
 def svc(db=Depends(get_db), user: User = teacher):
+    """Build the project service bound to the request session and teacher."""
     return LessonPlanService(db, user)
 
 @router.get("/projects")
 def list_projects(service=Depends(svc)):
+    """List the caller's projects, most recently updated first."""
     rows = service.db.scalars(select(LessonPlanProject).where(LessonPlanProject.owner_id == service.user.id).order_by(LessonPlanProject.updated_at.desc()))
     return {"items": [service.serialize(p) for p in rows]}
 
 @router.post("/projects", status_code=201)
 def create_project(payload: ProjectIn, service=Depends(svc)):
+    """Create an empty lesson plan project."""
     return service.create(payload.title, payload.request_text, payload.course_id)
 
 @router.get("/projects/{project_id}")
 def get_project(project_id: str, service=Depends(svc)):
+    """Return one project with its pages."""
     return service.serialize(service.project(project_id))
 
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: str, service=Depends(svc)):
+    """Delete a project owned by the caller."""
     p = service.project(project_id); service.db.delete(p); service.db.commit(); return {"ok": True}
 
 @router.post("/projects/{project_id}/generate")
 def generate(project_id: str, service=Depends(svc)):
+    """Generate pages for a project through the lesson plan service."""
     return service.run(project_id)
 
 @router.post("/projects/{project_id}/requirements/chat")
 def requirements_chat(project_id: str, payload: ChatIn, service=Depends(svc)):
+    """Record one requirement answer and return the next question.
+
+    After three answers the interview is treated as ready.
+    """
     p = service.project(project_id); history = list((p.settings_json or {}).get("chat", []));
     if payload.content.strip(): history.append(payload.content.strip())
     p.settings_json = {**(p.settings_json or {}), "chat": history}; service.db.commit()
@@ -69,11 +90,17 @@ def requirements_chat(project_id: str, payload: ChatIn, service=Depends(svc)):
 
 @router.get("/projects/{project_id}/pages")
 def pages(project_id: str, service=Depends(svc)):
+    """List page documents in display order."""
     p = service.project(project_id)
     return {"items": [{"id": x.id, "title": x.title, "page_role": x.page_role, "sort_order": x.sort_order, "document": x.document_json, "revision": x.revision, "status": x.status} for x in sorted(p.pages, key=lambda x: x.sort_order)]}
 
 @router.patch("/projects/{project_id}/pages/{page_id}/document")
 def patch_document(project_id: str, page_id: str, payload: DocumentIn, service=Depends(svc)):
+    """Replace one page document with optimistic revision checking.
+
+    Raises:
+        HTTPException: 404 for an unknown page, 409 when the revision is stale.
+    """
     from fastapi import HTTPException
     p = service.project(project_id); page = service.db.scalar(select(LessonPlanPage).where(LessonPlanPage.id == page_id, LessonPlanPage.project_id == p.id))
     if not page: raise HTTPException(404, "页面不存在")
@@ -83,6 +110,7 @@ def patch_document(project_id: str, page_id: str, payload: DocumentIn, service=D
 
 @router.post("/projects/{project_id}/files", status_code=201)
 def upload(project_id: str, file: UploadFile = File(...), service=Depends(svc)):
+    """Store an uploaded asset under the project directory."""
     p = service.project(project_id); root = settings.ppt_storage_path / "lesson_plans" / p.id / "assets"; root.mkdir(parents=True, exist_ok=True)
     name = Path(file.filename or "asset.bin").name; path = root / name; path.write_bytes(file.file.read())
     asset = LessonPlanAsset(project_id=p.id, source_type="upload", title=name, file_path=str(path), public_url=f"/api/lesson-plans/projects/{p.id}/assets/{name}"); service.db.add(asset); service.db.commit(); service.db.refresh(asset)
@@ -90,10 +118,16 @@ def upload(project_id: str, file: UploadFile = File(...), service=Depends(svc)):
 
 @router.get("/projects/{project_id}/assets/{filename}")
 def asset(project_id: str, filename: str, service=Depends(svc)):
+    """Serve an uploaded project asset by file name."""
     p = service.project(project_id); return FileResponse(settings.ppt_storage_path / "lesson_plans" / p.id / "assets" / Path(filename).name)
 
 @router.post("/projects/{project_id}/exports", status_code=202)
 def export_project(project_id: str, payload: ExportIn, service=Depends(svc)):
+    """Render the project to PDF and record the export job.
+
+    The job row is written as running, then completed or failed before the
+    response returns.
+    """
     p = service.project(project_id); root = settings.ppt_storage_path / "lesson_plans" / p.id; root.mkdir(parents=True, exist_ok=True)
     job = LessonPlanExportJob(project_id=p.id, status="running"); service.db.add(job); service.db.flush()
     css = "@page{size:A4;margin:0}body{margin:0;font-family:Arial,'Microsoft YaHei',sans-serif}.page{width:210mm;height:297mm;position:relative;page-break-after:always;overflow:hidden;background:#fff}.el{position:absolute;white-space:pre-wrap;overflow:hidden}" + ("*{filter:grayscale(1)}" if payload.black_white else "")
@@ -118,18 +152,29 @@ def export_project(project_id: str, payload: ExportIn, service=Depends(svc)):
 
 @router.get("/projects/{project_id}/exports/{export_id}")
 def export_status(project_id: str, export_id: str, service=Depends(svc)):
+    """Return the status of one export job."""
     p=service.project(project_id); job=service.db.scalar(select(LessonPlanExportJob).where(LessonPlanExportJob.id==export_id, LessonPlanExportJob.project_id==p.id))
     if not job: from fastapi import HTTPException; raise HTTPException(404,"导出任务不存在")
     return {"id":job.id,"status":job.status,"error":job.error_message}
 
 @router.get("/projects/{project_id}/exports/{export_id}/download")
 def download_export(project_id: str, export_id: str, service=Depends(svc)):
+    """Download the PDF of a completed export.
+
+    Raises:
+        HTTPException: 409 while the export is unfinished.
+    """
     p=service.project(project_id); job=service.db.scalar(select(LessonPlanExportJob).where(LessonPlanExportJob.id==export_id, LessonPlanExportJob.project_id==p.id))
     if not job or job.status != "completed": from fastapi import HTTPException; raise HTTPException(409,"导出尚未完成")
     return FileResponse(job.pdf_path, filename="lesson-plan.pdf", media_type="application/pdf")
 
 @router.get("/projects/{project_id}/events/stream")
 async def events(project_id: str, last_event_id: int = Query(0), service=Depends(svc)):
+    """Stream new lesson plan events for a project over SSE.
+
+    The generator polls for up to about 60 seconds and then ends so the client
+    can reconnect.
+    """
     service.project(project_id)
     async def gen():
         current = last_event_id

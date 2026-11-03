@@ -1,3 +1,5 @@
+"""Profile routes: account details, avatar upload and password change."""
+
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
@@ -14,24 +16,34 @@ router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 @router.get("", response_model=UserOut)
 def get_profile(user: User = Depends(current_user)):
+    """Return the signed-in user's profile."""
     return user
 
 
 @router.patch("", response_model=UserOut)
 def patch_profile(payload: ProfileUpdateIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Update the display name and email of the signed-in user."""
     return update_profile(db, user, payload.name, payload.email)
 
 
 @router.post("/avatar", response_model=UserOut)
 def upload_avatar(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Validate, store and attach a new avatar image."""
     return replace_avatar(db, user, file, LocalStorage(settings.upload_path))
 
 
 @router.delete("/avatar", response_model=UserOut)
 def delete_avatar(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Remove the stored avatar and clear its URL."""
     return remove_avatar(db, user, LocalStorage(settings.upload_path))
 
 
 @router.put("/password", status_code=204)
 def put_password(payload: PasswordChangeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Change the password after verifying the current one.
+
+    Raises:
+        HTTPException: 400 when the current password is wrong or the new one
+            repeats it.
+    """
     change_password(db, user, payload.current_password, payload.new_password)

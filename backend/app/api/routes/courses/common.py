@@ -1,3 +1,9 @@
+"""Shared course helpers: authorization, serialization and ordering.
+
+The catalog, discussion and materials routers import this module with a
+wildcard so these helpers stay private to the package.
+"""
+
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -31,6 +37,16 @@ router = APIRouter(prefix="/api/courses", tags=["courses"])
 
 
 def _course_for_user(course_id: str, user: User, db: Session, manage: bool = False) -> Course:
+    """Load a course and enforce the caller's access level.
+
+    Admins see every course, teachers only the courses they own, and students
+    only the courses they are enrolled in.  ``manage=True`` additionally
+    rejects students because the caller mutates course structure.
+
+    Raises:
+        HTTPException: 404 when the course is missing, 403 when the caller may
+            not access it.
+    """
     course = db.scalar(
         select(Course)
         .where(Course.id == course_id)
@@ -50,6 +66,7 @@ def _course_for_user(course_id: str, user: User, db: Session, manage: bool = Fal
 
 
 def _chapter_or_404(course: Course, chapter_id: str) -> CourseChapter:
+    """Return a chapter of an already loaded course, or raise 404."""
     chapter = next((item for item in course.chapters if item.id == chapter_id), None)
     if not chapter:
         raise HTTPException(404, "Chapter not found")
@@ -57,6 +74,7 @@ def _chapter_or_404(course: Course, chapter_id: str) -> CourseChapter:
 
 
 def _material_out(material: CourseMaterial, db: Session) -> CourseMaterialOut:
+    """Serialize a material with its processing document and job state."""
     asset = material.file_asset
     ingestion = getattr(material, "ingestion", None)
     processing_document = db.scalar(select(FileProcessingDocument).where((FileProcessingDocument.file_asset_id == asset.id) | (FileProcessingDocument.sha256 == asset.sha256))) if asset is not None else None
@@ -80,6 +98,7 @@ def _material_out(material: CourseMaterial, db: Session) -> CourseMaterialOut:
 
 
 def _chapter_out(chapter: CourseChapter, db: Session) -> CourseChapterOut:
+    """Serialize a chapter with its material list."""
     return CourseChapterOut(
         id=chapter.id,
         kind=chapter.kind,
@@ -91,6 +110,11 @@ def _chapter_out(chapter: CourseChapter, db: Session) -> CourseChapterOut:
 
 
 def _normalize_chapter_order(course: Course, kind: str, selected: CourseChapter | None = None, requested_order: int | None = None) -> None:
+    """Reindex sibling chapters after an insert, move or delete.
+
+    ``requested_order`` is clamped to the sibling range; ``selected`` is placed
+    at that index and the remaining siblings receive a dense order.
+    """
     chapters = sorted((item for item in course.chapters if item.kind == kind and item is not selected), key=lambda item: (item.sort_order, item.created_at, item.id))
     if selected is not None:
         index = len(chapters) if requested_order is None else min(max(requested_order, 0), len(chapters))
@@ -100,10 +124,12 @@ def _normalize_chapter_order(course: Course, kind: str, selected: CourseChapter 
 
 
 def _discussion_author_out(user: User) -> DiscussionAuthorOut:
+    """Serialize the public author fields of a comment."""
     return DiscussionAuthorOut(id=user.id, username=user.username, name=user.name, avatar_url=user.avatar_url)
 
 
 def _discussion_comment_out(comment: DiscussionComment, current_user_id: str) -> DiscussionCommentOut:
+    """Serialize a comment with its like state and reply tree."""
     replies = sorted(comment.replies, key=lambda item: (item.created_at, item.id))
     return DiscussionCommentOut(
         id=comment.id,
@@ -121,6 +147,7 @@ def _discussion_comment_out(comment: DiscussionComment, current_user_id: str) ->
 
 
 def _discussion_comment_or_404(course_id: str, comment_id: str, db: Session) -> DiscussionComment:
+    """Load a comment with author, likes and replies, scoped to the course."""
     comment = db.scalar(
         select(DiscussionComment)
         .where(DiscussionComment.id == comment_id, DiscussionComment.course_id == course_id)
@@ -132,6 +159,7 @@ def _discussion_comment_or_404(course_id: str, comment_id: str, db: Session) -> 
 
 
 def _discussion_activity(comment: DiscussionComment):
+    """Return the newest updated_at timestamp in the comment thread."""
     timestamps = [comment.updated_at, *(reply.updated_at for reply in comment.replies)]
     return max(timestamps)
 

@@ -1,3 +1,9 @@
+"""Zoom live-class routes and the Zoom webhook receiver.
+
+Meeting lifecycle follows the course schedule: one weekly recurring meeting
+is created per schedule, then joined inside a window around each occurrence.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -22,6 +28,11 @@ webhook_router = APIRouter(prefix="/api/zoom", tags=["zoom"])
 
 
 def _course(course_id: str, user: User, db: Session) -> Course:
+    """Load a course and enforce teacher or student access.
+
+    Raises:
+        HTTPException: 404 when missing, 403 when the caller may not access it.
+    """
     course = db.scalar(select(Course).options(selectinload(Course.schedules), selectinload(Course.zoom_meetings)).where(Course.id == course_id))
     if not course:
         raise HTTPException(404, "Course not found")
@@ -33,11 +44,17 @@ def _course(course_id: str, user: User, db: Session) -> Course:
 
 
 def _meeting_map(course: Course) -> dict[str, CourseZoomMeeting]:
+    """Index the course's Zoom meetings by schedule id."""
     return {meeting.schedule_id: meeting for meeting in course.zoom_meetings}
 
 
 @router.get("", response_model=LiveClassOut)
 def get_live_class(course_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Return the live-class state for each schedule of the course.
+
+    ``can_join`` follows the join window; ``can_start`` additionally requires
+    a teacher or admin role.
+    """
     course = _course(course_id, user, db)
     meetings = _meeting_map(course)
     client = get_zoom_client()
@@ -66,6 +83,12 @@ def get_live_class(course_id: str, user: User = Depends(current_user), db: Sessi
 
 @router.post("/provision", response_model=LiveClassOut)
 def provision_live_class(course_id: str, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Create or resync the recurring Zoom meeting for each schedule.
+
+    Raises:
+        HTTPException: 503 when Zoom is not configured, 502 on a Zoom API
+            failure.
+    """
     course = _course(course_id, user, db)
     client = get_zoom_client()
     try:
@@ -99,6 +122,12 @@ def provision_live_class(course_id: str, user: User = Depends(require_roles(User
 
 @router.post("/session", response_model=LiveClassSessionOut)
 def create_session(course_id: str, payload: LiveClassAuthorizeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Return or create the recording session for the current occurrence.
+
+    Raises:
+        HTTPException: 404 when no meeting is provisioned, 409 outside the join
+            window.
+    """
     course = _course(course_id, user, db)
     meeting = db.scalar(select(CourseZoomMeeting).where(CourseZoomMeeting.course_id == course_id, CourseZoomMeeting.id == payload.meeting_id)) if payload.meeting_id else db.scalar(select(CourseZoomMeeting).where(CourseZoomMeeting.course_id == course_id).order_by(CourseZoomMeeting.id))
     if not meeting:
@@ -119,6 +148,12 @@ def create_session(course_id: str, payload: LiveClassAuthorizeIn, user: User = D
 
 @router.post("/authorize", response_model=LiveClassAuthorizeOut)
 def authorize_live_class(course_id: str, payload: LiveClassAuthorizeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Issue a Meeting SDK token and, for hosts, a ZAK.
+
+    Raises:
+        HTTPException: 403 when a student asks to start, 409 outside the
+            start window, 503 when Zoom is not configured.
+    """
     course = _course(course_id, user, db)
     meeting = db.scalar(select(CourseZoomMeeting).where(CourseZoomMeeting.course_id == course_id, CourseZoomMeeting.id == payload.meeting_id)) if payload.meeting_id else db.scalar(select(CourseZoomMeeting).where(CourseZoomMeeting.course_id == course_id).order_by(CourseZoomMeeting.id))
     if not meeting:
@@ -151,6 +186,14 @@ def authorize_live_class(course_id: str, payload: LiveClassAuthorizeIn, user: Us
 
 @webhook_router.post("/webhooks")
 async def zoom_webhook(request: Request, db: Session = Depends(get_db)):
+    """Receive Zoom events, verify the signature and update sessions.
+
+    The signature check is skipped when no webhook secret is configured.
+
+    Returns:
+        The validation answer for ``endpoint.url_validation``, otherwise an
+        acknowledgement.
+    """
     body = await request.body()
     timestamp = request.headers.get("x-zm-request-timestamp", "")
     signature = request.headers.get("x-zm-signature", "")

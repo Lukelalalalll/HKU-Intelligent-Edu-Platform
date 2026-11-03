@@ -1,3 +1,5 @@
+"""Teacher dashboard routes: courses, schedule and grading backlog."""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -17,6 +19,7 @@ router = APIRouter(prefix="/api/teacher", tags=["teacher"])
 
 
 def serialize_course(course: Course) -> CourseOut:
+    """Serialize a course for the teacher dashboard."""
     return CourseOut(
         id=course.id,
         code=course.code,
@@ -37,6 +40,11 @@ def teacher_dashboard(
     user: User = Depends(require_roles(UserRole.teacher)),
     db: Session = Depends(get_db),
 ):
+    """Return owned courses, the weekly schedule and the grading backlog.
+
+    ``pending_count`` counts submissions without a score, so a graded
+    assignment drops out of the list.
+    """
     courses = db.scalars(
         select(Course)
         .where(Course.teacher_id == user.id)

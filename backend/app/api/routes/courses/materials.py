@@ -1,15 +1,23 @@
+"""Course material routes: chapters, uploads, processing state and downloads."""
+
 from .common import *  # noqa: F401,F403
 from app.services.file_processing import upload_asset_stream
 
 @router.get("/{course_id}/materials", response_model=list[CourseChapterOut])
 
 def list_materials(course_id: str, kind: str = Query(..., pattern="^(lecture|tutorial)$"), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """List chapters of one material kind with their materials."""
     course = _course_for_user(course_id, user, db)
     return [_chapter_out(chapter, db) for chapter in sorted((item for item in course.chapters if item.kind == kind), key=lambda item: item.sort_order)]
 
 
 @router.post("/{course_id}/materials/chapters", response_model=CourseChapterOut, status_code=201)
 def create_material_chapter(course_id: str, payload: CourseChapterCreate, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Append a chapter to the end of its kind.
+
+    Raises:
+        HTTPException: 409 when the title already exists in that kind.
+    """
     course = _course_for_user(course_id, user, db, manage=True)
     title = payload.title.strip()
     if any(item.kind == payload.kind and item.title.casefold() == title.casefold() for item in course.chapters):
@@ -23,6 +31,11 @@ def create_material_chapter(course_id: str, payload: CourseChapterCreate, user: 
 
 @router.patch("/{course_id}/materials/chapters/{chapter_id}", response_model=CourseChapterOut)
 def update_material_chapter(course_id: str, chapter_id: str, payload: CourseChapterUpdate, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Rename and/or move a chapter within its kind.
+
+    Raises:
+        HTTPException: 409 when the new title collides within the kind.
+    """
     course = _course_for_user(course_id, user, db, manage=True)
     chapter = _chapter_or_404(course, chapter_id)
     if payload.title is not None:
@@ -38,6 +51,11 @@ def update_material_chapter(course_id: str, chapter_id: str, payload: CourseChap
 
 @router.delete("/{course_id}/materials/chapters/{chapter_id}")
 def delete_material_chapter(course_id: str, chapter_id: str, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Delete a chapter together with its materials and files.
+
+    Rows are committed before the stored files are unlinked, so a storage
+    failure cannot roll back an already visible database change.
+    """
     course = _course_for_user(course_id, user, db, manage=True)
     chapter = _chapter_or_404(course, chapter_id)
     chapter_kind = chapter.kind
@@ -62,6 +80,11 @@ def delete_material_chapter(course_id: str, chapter_id: str, user: User = Depend
 
 @router.post("/{course_id}/materials/chapters/{chapter_id}/files", response_model=CourseMaterialOut, status_code=201)
 def upload_material(course_id: str, chapter_id: str, file: UploadFile = File(...), title: str | None = Form(default=None), user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Upload a file into a chapter and start its processing pipeline.
+
+    The asset row is created or reused by content hash, then the material is
+    returned with the processing state of its document.
+    """
     course = _course_for_user(course_id, user, db, manage=True)
     chapter = _chapter_or_404(course, chapter_id)
     try:
@@ -80,6 +103,7 @@ def upload_material(course_id: str, chapter_id: str, file: UploadFile = File(...
 
 @router.get("/{course_id}/materials/{material_id}/status")
 def material_status(course_id: str, material_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Return the processing document and job state of a material."""
     course = _course_for_user(course_id, user, db)
     material = next((m for ch in course.chapters for m in ch.materials if m.id == material_id), None)
     if not material: raise HTTPException(404, "Material not found")
@@ -89,6 +113,14 @@ def material_status(course_id: str, material_id: str, user: User = Depends(curre
 
 @router.post("/{course_id}/materials/assets", response_model=CourseMaterialOut, status_code=201)
 def attach_material_asset(course_id: str, file_asset_id: str, kind: str = Query(..., pattern="^(lecture|tutorial)$"), chapter_id: str | None = None, chapter_title: str | None = None, title: str | None = None, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Attach an already uploaded asset to a chapter.
+
+    A chapter id is used when given; otherwise a chapter title is matched or
+    created for the requested kind.
+
+    Raises:
+        HTTPException: 409 when the asset is already attached to a material.
+    """
     course = _course_for_user(course_id, user, db, manage=True)
     if chapter_id:
         chapter = _chapter_or_404(course, chapter_id)
@@ -111,6 +143,7 @@ def attach_material_asset(course_id: str, file_asset_id: str, kind: str = Query(
 
 @router.post("/{course_id}/materials/{material_id}/reindex")
 def reindex_material(course_id: str, material_id: str, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Reset and re-enqueue document processing for a material."""
     course = _course_for_user(course_id, user, db, manage=True)
     material = next((m for ch in course.chapters for m in ch.materials if m.id == material_id), None)
     if not material: raise HTTPException(404, "Material not found")
@@ -128,6 +161,7 @@ def reindex_material(course_id: str, material_id: str, user: User = Depends(requ
 
 @router.delete("/{course_id}/materials/{material_id}")
 def delete_material(course_id: str, material_id: str, user: User = Depends(require_roles(UserRole.teacher, UserRole.admin)), db: Session = Depends(get_db)):
+    """Delete a material, its asset row and the stored file."""
     course = _course_for_user(course_id, user, db, manage=True)
     material = next((item for chapter in course.chapters for item in chapter.materials if item.id == material_id), None)
     if not material:
@@ -143,6 +177,7 @@ def delete_material(course_id: str, material_id: str, user: User = Depends(requi
 
 @router.get("/{course_id}/materials/{material_id}/download")
 def download_material(course_id: str, material_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Stream the stored file to a member of the course."""
     course = _course_for_user(course_id, user, db)
     material = next((item for chapter in course.chapters for item in chapter.materials if item.id == material_id), None)
     if not material:

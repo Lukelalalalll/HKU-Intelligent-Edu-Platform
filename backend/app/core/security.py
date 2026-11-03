@@ -1,3 +1,9 @@
+"""Password hashing, JWT issuing and the HTTP authentication dependencies.
+
+Tokens are signed with ``jwt_secret_key`` and reach requests either as
+HttpOnly cookies or, for isolated frontend sessions, as a bearer header.
+"""
+
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -14,24 +20,30 @@ ACCESS_COOKIE = "hku_access"
 REFRESH_COOKIE = "hku_refresh"
 
 def hash_password(password: str) -> str:
+    """Return the bcrypt hash of a plaintext password."""
     return pwd_context.hash(password)
 
 def verify_password(password: str, password_hash: str) -> bool:
+    """Check a plaintext password against its stored hash."""
     return pwd_context.verify(password, password_hash)
 
 def _token(user: User, expires_delta: timedelta, token_type: str) -> str:
+    """Build one signed JWT carrying the user id, role and token type."""
     now = datetime.now(timezone.utc)
     return jwt.encode({"sub": user.id, "role": user.role.value, "type": token_type, "iat": now, "exp": now + expires_delta}, settings.jwt_secret_key, algorithm="HS256")
 
 def issue_tokens(user: User) -> tuple[str, str]:
+    """Return a fresh ``(access, refresh)`` token pair for the user."""
     return _token(user, timedelta(minutes=settings.jwt_access_minutes), "access"), _token(user, timedelta(days=settings.jwt_refresh_days), "refresh")
 
 def set_auth_cookies(response, access_token: str, refresh_token: str) -> None:
+    """Set the HttpOnly access and refresh cookies on the response."""
     common = {"httponly": True, "secure": settings.cookie_secure, "samesite": "lax", "path": "/"}
     response.set_cookie(ACCESS_COOKIE, access_token, max_age=settings.jwt_access_minutes * 60, **common)
     response.set_cookie(REFRESH_COOKIE, refresh_token, max_age=settings.jwt_refresh_days * 86400, **common)
 
 def clear_auth_cookies(response) -> None:
+    """Delete both auth cookies from the response."""
     response.delete_cookie(ACCESS_COOKIE, path="/")
     response.delete_cookie(REFRESH_COOKIE, path="/")
 
@@ -55,6 +67,12 @@ def isolated_access_token(request: Request) -> str | None:
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """Resolve and validate the request user.
+
+    Raises:
+        HTTPException: 401 when the token is missing, invalid or expired, or
+            when the user is inactive.
+    """
     token = isolated_access_token(request) or request.cookies.get(ACCESS_COOKIE)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
@@ -70,6 +88,7 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 def require_roles(*roles: UserRole):
+    """Return a dependency that rejects callers outside the given roles."""
     def dependency(user: User = Depends(current_user)) -> User:
         if user.role not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")

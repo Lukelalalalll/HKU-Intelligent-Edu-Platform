@@ -1,3 +1,9 @@
+"""Teacher agent conversation routes: conversation and message storage.
+
+The endpoints only persist history; retrieval and model calls belong to the
+RAG services.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -17,6 +23,7 @@ router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 
 def owned_conversation(conversation_id: str, user: User, db: Session) -> AgentConversation:
+    """Return a conversation owned by the caller, or raise 404."""
     conversation = db.scalar(
         select(AgentConversation).where(
             AgentConversation.id == conversation_id,
@@ -33,6 +40,7 @@ def list_conversations(
     user: User = Depends(require_roles(UserRole.teacher)),
     db: Session = Depends(get_db),
 ):
+    """List teacher conversations, most recently active first."""
     latest_message_at = select(func.max(AgentMessage.created_at)).where(
         AgentMessage.conversation_id == AgentConversation.id,
     ).scalar_subquery()
@@ -49,6 +57,7 @@ def create_conversation(
     user: User = Depends(require_roles(UserRole.teacher)),
     db: Session = Depends(get_db),
 ):
+    """Create a conversation, optionally bound to a course the teacher owns."""
     if payload.course_id:
         course = db.get(Course, payload.course_id)
         if not course or course.teacher_id != user.id:
@@ -66,6 +75,7 @@ def get_conversation(
     user: User = Depends(require_roles(UserRole.teacher)),
     db: Session = Depends(get_db),
 ):
+    """Return a conversation with its messages in creation order."""
     conversation = owned_conversation(conversation_id, user, db)
     messages = db.scalars(
         select(AgentMessage)
@@ -88,6 +98,7 @@ def append_message(
     user: User = Depends(require_roles(UserRole.teacher)),
     db: Session = Depends(get_db),
 ):
+    """Append one message; a placeholder title takes the first user text."""
     conversation = owned_conversation(conversation_id, user, db)
     message = AgentMessage(
         conversation_id=conversation.id,
@@ -110,6 +121,7 @@ def delete_conversation(
     user: User = Depends(require_roles(UserRole.teacher)),
     db: Session = Depends(get_db),
 ):
+    """Delete a conversation owned by the caller."""
     conversation = owned_conversation(conversation_id, user, db)
     db.delete(conversation)
     db.commit()

@@ -1,3 +1,5 @@
+"""Student dashboard routes: courses, schedule and assignment reminders."""
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -20,6 +22,7 @@ router = APIRouter(prefix="/api/student", tags=["student"])
 
 
 def _serialize_course(course: Course) -> CourseOut:
+    """Serialize a course for the student dashboard."""
     return CourseOut(
         id=course.id,
         code=course.code,
@@ -36,6 +39,12 @@ def _serialize_course(course: Course) -> CourseOut:
 
 
 def _submission_status(assignment: Assignment, submission, now: datetime) -> tuple[str, datetime | None, int | None]:
+    """Classify one assignment from the student's submission.
+
+    Returns ``(status, submitted_at, score)`` where status is one of
+    ``not_started``, ``overdue``, ``submitted`` or ``graded``.  Naive due
+    datetimes are treated as UTC.
+    """
     if submission is None:
         due_at = assignment.due_at
         if due_at is not None:
@@ -53,6 +62,11 @@ def student_dashboard(
     user: User = Depends(require_roles(UserRole.student)),
     db: Session = Depends(get_db),
 ):
+    """Return enrolled courses, the weekly schedule and assignment reminders.
+
+    Only published assignments appear in the reminder list, ordered by due
+    date with undated items last.
+    """
     courses = db.scalars(
         select(Course)
         .join(Enrollment, Enrollment.course_id == Course.id)

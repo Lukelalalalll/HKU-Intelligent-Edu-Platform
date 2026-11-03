@@ -1,3 +1,9 @@
+"""Teacher video project routes and the Coze webhook receiver.
+
+Every endpoint is teacher-scoped: projects are loaded by ``owner_id`` so one
+teacher cannot address another teacher's media.
+"""
+
 import hashlib
 import json
 import secrets
@@ -21,6 +27,11 @@ router = APIRouter(prefix="/api/teacher/video-projects", tags=["teacher-video"])
 
 
 def _enqueue_video_job(db, kind, args, task_id):
+    """Enqueue a video job through the shared dispatcher.
+
+    A legacy ``stage_and_publish`` monkeypatch hook is still honoured; without
+    one, ``JobManager`` performs the outbox staging.
+    """
     hook = globals().get("stage_" + "and_publish")
     if hook is not None and hook is not _enqueue_video_job:
         return hook(db, kind, args, task_id)
@@ -34,11 +45,13 @@ globals()["stage_" + "and_publish"] = _enqueue_video_job
 
 @router.get("/providers/health")
 def provider_health(user: User = Depends(require_roles(UserRole.teacher))):
+    """Report health for every configured video provider."""
     from app.services.video_generation import get_provider
     return {name: get_provider(name).health_check() for name in ("coze", "local")}
 
 
 def project_or_404(db: Session, user: User, project_id: str) -> VideoProject:
+    """Load an owned video project with its sources and scenes, or raise 404."""
     project = db.scalar(select(VideoProject).where(VideoProject.id == project_id, VideoProject.owner_id == user.id).options(selectinload(VideoProject.sources), selectinload(VideoProject.scenes)))
     if not project:
         raise HTTPException(status_code=404, detail="视频项目不存在")
@@ -47,11 +60,13 @@ def project_or_404(db: Session, user: User, project_id: str) -> VideoProject:
 
 @router.get("", response_model=list[VideoOut])
 def list_projects(user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """List the caller's video projects, most recently updated first."""
     return db.scalars(select(VideoProject).where(VideoProject.owner_id == user.id).order_by(VideoProject.updated_at.desc())).all()
 
 
 @router.post("", response_model=VideoOut, status_code=201)
 def create_project(payload: VideoProjectCreate, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Create a video project, optionally bound to a course the teacher owns."""
     if payload.course_id and not db.scalar(select(Course).where(Course.id == payload.course_id, Course.teacher_id == user.id)):
         raise HTTPException(status_code=404, detail="课程不存在或不属于当前教师")
     config = {"learning_objectives": payload.learning_objectives, "audience": payload.audience, "voice_enabled": payload.voice_enabled, "captions_enabled": payload.captions_enabled, "avatar_enabled": payload.avatar_enabled}
@@ -62,11 +77,13 @@ def create_project(payload: VideoProjectCreate, user: User = Depends(require_rol
 
 @router.get("/{project_id}", response_model=VideoOut)
 def get_project(project_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Return one owned video project."""
     return project_or_404(db, user, project_id)
 
 
 @router.patch("/{project_id}", response_model=VideoOut)
 def patch_project(project_id: str, payload: VideoProjectPatch, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Apply a partial update; config keys are folded into ``config_json``."""
     project = project_or_404(db, user, project_id); values = payload.model_dump(exclude_unset=True); config = dict(project.config_json or {})
     for key in ("learning_objectives", "audience", "voice_enabled", "captions_enabled", "avatar_enabled"):
         if key in values: config[key] = values.pop(key)
@@ -76,6 +93,7 @@ def patch_project(project_id: str, payload: VideoProjectPatch, user: User = Depe
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Delete a project, then remove the storage of its jobs."""
     project = project_or_404(db, user, project_id)
     job_ids = [item.id for item in project.jobs]
     db.delete(project); db.commit()
@@ -85,6 +103,7 @@ def delete_project(project_id: str, user: User = Depends(require_roles(UserRole.
 
 @router.post("/{project_id}/sources", response_model=VideoSourceOut, status_code=201)
 def add_source(project_id: str, payload: VideoSourceCreate, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Attach a text source or an owned file asset to a project."""
     project_or_404(db, user, project_id)
     if payload.file_asset_id and not db.scalar(select(FileAsset).where(FileAsset.id == payload.file_asset_id, FileAsset.uploader_id == user.id)):
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -94,6 +113,7 @@ def add_source(project_id: str, payload: VideoSourceCreate, user: User = Depends
 
 @router.post("/{project_id}/generate", response_model=VideoJobOut, status_code=202)
 def generate(project_id: str, payload: VideoGenerateIn = VideoGenerateIn(), user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Queue generation for a project, reusing a job with the same key."""
     project = project_or_404(db, user, project_id); key = payload.idempotency_key or f"project:{project.id}"
     existing = db.scalar(select(VideoGenerationJob).where(VideoGenerationJob.owner_id == user.id, VideoGenerationJob.idempotency_key == key))
     if existing: return existing
@@ -103,6 +123,7 @@ def generate(project_id: str, payload: VideoGenerateIn = VideoGenerateIn(), user
 
 
 def enqueue_job(project: VideoProject, user: User, db: Session, *, idempotency_key: str | None = None) -> VideoGenerationJob:
+    """Create one queued job for a project unless the key already exists."""
     key = idempotency_key or f"project:{project.id}"
     existing = db.scalar(select(VideoGenerationJob).where(VideoGenerationJob.owner_id == user.id, VideoGenerationJob.idempotency_key == key))
     if existing:
@@ -113,6 +134,7 @@ def enqueue_job(project: VideoProject, user: User, db: Session, *, idempotency_k
 
 
 def get_job(db: Session, user: User, project_id: str, job_id: str) -> VideoGenerationJob:
+    """Load an owned job of a project, or raise 404."""
     project_or_404(db, user, project_id)
     item = db.scalar(select(VideoGenerationJob).where(VideoGenerationJob.id == job_id, VideoGenerationJob.project_id == project_id, VideoGenerationJob.owner_id == user.id))
     if not item: raise HTTPException(status_code=404, detail="任务不存在")
@@ -121,15 +143,18 @@ def get_job(db: Session, user: User, project_id: str, job_id: str) -> VideoGener
 
 @router.get("/{project_id}/jobs", response_model=list[VideoJobOut])
 def jobs(project_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """List the jobs of a project, newest first."""
     project_or_404(db, user, project_id); return db.scalars(select(VideoGenerationJob).where(VideoGenerationJob.project_id == project_id, VideoGenerationJob.owner_id == user.id).order_by(VideoGenerationJob.created_at.desc())).all()
 
 
+# Return one job of a project.
 @router.get("/{project_id}/jobs/{job_id}", response_model=VideoJobOut)
 def job(project_id: str, job_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)): return get_job(db, user, project_id, job_id)
 
 
 @router.post("/{project_id}/jobs/{job_id}/cancel", response_model=VideoJobOut)
 def cancel_job(project_id: str, job_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Mark a job canceled and best-effort cancel it at the provider."""
     item = get_job(db, user, project_id, job_id)
     if item.provider_job_id:
         try:
@@ -144,23 +169,31 @@ def cancel_job(project_id: str, job_id: str, user: User = Depends(require_roles(
 
 @router.post("/{project_id}/jobs/{job_id}/retry", response_model=VideoJobOut, status_code=202)
 def retry_job(project_id: str, job_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Queue a new job that retries the failed one.
+
+    The new idempotency key carries the attempt number, so a retry never
+    collides with the original job.
+    """
     old = get_job(db, user, project_id, job_id); project = project_or_404(db, user, project_id); item = VideoGenerationJob(project_id=project_id, owner_id=user.id, provider=project.provider, idempotency_key=f"{old.idempotency_key}:retry:{old.attempts + 1}", status="queued", stage="排队中")
     db.add(item); db.flush(); task_id = f"video-generation:{user.id}:{item.idempotency_key}"; item.queue_task_id = task_id; _enqueue_video_job(db, "video_generation", (item.id,), task_id); return item
 
 
 @router.get("/{project_id}/scenes", response_model=list[VideoSceneOut])
 def scenes(project_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """List the scenes of a project in display order."""
     project_or_404(db, user, project_id); return db.scalars(select(VideoScene).where(VideoScene.project_id == project_id).order_by(VideoScene.order_index)).all()
 
 
 @router.get("/{project_id}/sources", response_model=list[VideoSourceOut])
 def sources(project_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """List the sources of a project in upload order."""
     project_or_404(db, user, project_id)
     return db.scalars(select(VideoSource).where(VideoSource.project_id == project_id).order_by(VideoSource.created_at)).all()
 
 
 @router.patch("/{project_id}/scenes/{scene_id}", response_model=VideoSceneOut)
 def patch_scene(project_id: str, scene_id: str, payload: VideoScenePatch, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Apply a partial update to one scene."""
     project_or_404(db, user, project_id); scene = db.scalar(select(VideoScene).where(VideoScene.id == scene_id, VideoScene.project_id == project_id))
     if not scene: raise HTTPException(status_code=404, detail="场景不存在")
     for key, value in payload.model_dump(exclude_unset=True).items(): setattr(scene, key, value)
@@ -169,6 +202,10 @@ def patch_scene(project_id: str, scene_id: str, payload: VideoScenePatch, user: 
 
 @router.post("/{project_id}/scenes/{scene_id}/generate", response_model=VideoJobOut, status_code=202)
 def generate_scene(project_id: str, scene_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Queue a regeneration job for one scene.
+
+    The scene id is recorded on the project config so the worker can target it.
+    """
     project = project_or_404(db, user, project_id)
     scene = db.scalar(select(VideoScene).where(VideoScene.id == scene_id, VideoScene.project_id == project_id))
     if not scene:
@@ -180,6 +217,11 @@ def generate_scene(project_id: str, scene_id: str, user: User = Depends(require_
 
 @router.get("/{project_id}/events/stream")
 def stream_events(project_id: str, request: Request, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Stream job status changes over SSE for up to 15 minutes.
+
+    The request session is not reused: the generator opens its own session and
+    closes it when the stream ends.
+    """
     project_or_404(db, user, project_id)
     def events():
         from app.db.session import SessionLocal
@@ -205,6 +247,7 @@ def stream_events(project_id: str, request: Request, user: User = Depends(requir
 
 @router.get("/{project_id}/assets/{asset_id}/download")
 def download_asset(project_id: str, asset_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """Download or redirect to a rendered video asset."""
     project_or_404(db, user, project_id); asset = db.scalar(select(VideoAsset).where(VideoAsset.id == asset_id, VideoAsset.project_id == project_id))
     if not asset: raise HTTPException(status_code=404, detail="视频产物不存在")
     path = Path(asset.storage_key)
@@ -216,12 +259,17 @@ def download_asset(project_id: str, asset_id: str, user: User = Depends(require_
 
 @router.get("/{project_id}/assets", response_model=list[VideoAssetOut])
 def assets(project_id: str, user: User = Depends(require_roles(UserRole.teacher)), db: Session = Depends(get_db)):
+    """List the rendered assets of a project, newest first."""
     project_or_404(db, user, project_id)
     return db.scalars(select(VideoAsset).where(VideoAsset.project_id == project_id).order_by(VideoAsset.created_at.desc())).all()
 
 
 @router.post("/webhooks/coze")
 async def coze_webhook(request: Request):
+    """Verify and accept a Coze provider callback.
+
+    The route answers 404 unless a webhook secret is configured.
+    """
     if not settings.coze_webhook_secret: raise HTTPException(status_code=404, detail="Coze webhook 未启用")
     signature = request.headers.get("X-Coze-Signature", ""); expected = hashlib.sha256(settings.coze_webhook_secret.encode()).hexdigest()
     if not secrets.compare_digest(signature, expected): raise HTTPException(status_code=401, detail="Invalid webhook signature")

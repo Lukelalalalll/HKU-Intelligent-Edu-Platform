@@ -1,3 +1,9 @@
+"""Admin-only AI provider and business mapping routes.
+
+Every change is written to the audit log, and provider API keys are
+encrypted at rest and returned only as a masked hint.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -13,6 +19,7 @@ admin = Depends(require_roles(UserRole.admin))
 
 
 class ProviderIn(BaseModel):
+    """Payload for creating or replacing an AI provider row."""
     name: str = Field(min_length=1, max_length=120)
     provider_type: str = Field(pattern="^(openai|deepseek)$")
     base_url: str = Field(min_length=1, max_length=500)
@@ -24,6 +31,7 @@ class ProviderIn(BaseModel):
 
 
 class BusinessIn(BaseModel):
+    """Payload for binding one business code to a provider and model."""
     provider_id: str | None = None
     model: str = Field(default="", max_length=160)
     embedding_model: str = Field(default="", max_length=160)
@@ -32,21 +40,29 @@ class BusinessIn(BaseModel):
 
 
 def audit(db: Session, user: User, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
+    """Record one admin action in the audit log; the caller commits."""
     db.add(AuditLog(user_id=user.id, action=action, resource_type=resource_type, resource_id=resource_id, details=details or {}))
 
 
 def provider_out(provider: AiProvider) -> dict:
+    """Serialize a provider without exposing the stored key."""
     key = decrypt_api_key(provider.api_key_encrypted)
     return {"id": provider.id, "name": provider.name, "provider_type": provider.provider_type, "base_url": provider.base_url, "api_key_configured": bool(key), "api_key_masked": mask_api_key(key), "default_model": provider.default_model, "timeout_seconds": provider.timeout_seconds, "capabilities": provider.capabilities_json or {}, "is_enabled": provider.is_enabled, "updated_at": provider.updated_at.isoformat() if provider.updated_at else None}
 
 
 @router.get("/providers")
 def list_providers(user: User = admin, db: Session = Depends(get_db)):
+    """List every configured provider."""
     return {"items": [provider_out(p) for p in db.scalars(select(AiProvider).order_by(AiProvider.name)).all()]}
 
 
 @router.post("/providers", status_code=201)
 def create_provider(payload: ProviderIn, user: User = admin, db: Session = Depends(get_db)):
+    """Create a provider, encrypting the key when one is supplied.
+
+    Raises:
+        HTTPException: 409 when a provider with the same name exists.
+    """
     if db.scalar(select(AiProvider).where(AiProvider.name == payload.name.strip())):
         raise HTTPException(409, "Provider 名称已存在")
     provider = AiProvider(name=payload.name.strip(), provider_type=payload.provider_type, base_url=payload.base_url.rstrip("/"), default_model=payload.default_model, timeout_seconds=payload.timeout_seconds, capabilities_json=payload.capabilities, is_enabled=payload.is_enabled)
@@ -57,6 +73,11 @@ def create_provider(payload: ProviderIn, user: User = admin, db: Session = Depen
 
 @router.patch("/providers/{provider_id}")
 def update_provider(provider_id: str, payload: ProviderIn, user: User = admin, db: Session = Depends(get_db)):
+    """Replace provider settings; an omitted key keeps the stored one.
+
+    Raises:
+        HTTPException: 404 for an unknown provider, 409 on a duplicate name.
+    """
     provider = db.get(AiProvider, provider_id)
     if not provider: raise HTTPException(404, "Provider 不存在")
     duplicate = db.scalar(select(AiProvider).where(AiProvider.name == payload.name.strip(), AiProvider.id != provider_id))
@@ -70,6 +91,11 @@ def update_provider(provider_id: str, payload: ProviderIn, user: User = admin, d
 
 @router.delete("/providers/{provider_id}")
 def delete_provider(provider_id: str, user: User = admin, db: Session = Depends(get_db)):
+    """Delete a provider that no business mapping references.
+
+    Raises:
+        HTTPException: 409 while any business binding still uses it.
+    """
     provider = db.get(AiProvider, provider_id)
     if not provider: raise HTTPException(404, "Provider 不存在")
     if db.scalar(select(AiBusinessBinding).where(AiBusinessBinding.provider_id == provider_id)):
@@ -79,6 +105,11 @@ def delete_provider(provider_id: str, user: User = admin, db: Session = Depends(
 
 @router.post("/providers/{provider_id}/test")
 def test_provider(provider_id: str, user: User = admin, db: Session = Depends(get_db)):
+    """Call the provider once with a minimal prompt to verify credentials.
+
+    Raises:
+        HTTPException: 409 without a key, 502 when the provider call fails.
+    """
     provider = db.get(AiProvider, provider_id)
     if not provider: raise HTTPException(404, "Provider 不存在")
     # Use a temporary binding-free probe while preserving the configured provider.
@@ -94,6 +125,7 @@ def test_provider(provider_id: str, user: User = admin, db: Session = Depends(ge
 
 @router.get("/businesses")
 def list_businesses(user: User = admin, db: Session = Depends(get_db)):
+    """List the seeded business codes with their current bindings."""
     rows = {row.business_code: row for row in db.scalars(select(AiBusinessBinding)).all()}
     items = []
     for code, meta in BUSINESSES.items():
@@ -104,6 +136,11 @@ def list_businesses(user: User = admin, db: Session = Depends(get_db)):
 
 @router.patch("/businesses/{business_code}")
 def update_business(business_code: str, payload: BusinessIn, user: User = admin, db: Session = Depends(get_db)):
+    """Bind one business code to a provider, model and timeout.
+
+    Raises:
+        HTTPException: 404 for an unknown business code or provider.
+    """
     meta = BUSINESSES.get(business_code)
     if not meta: raise HTTPException(404, "未知 AI 业务")
     if payload.provider_id and not db.get(AiProvider, payload.provider_id): raise HTTPException(404, "Provider 不存在")

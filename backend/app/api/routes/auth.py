@@ -1,3 +1,10 @@
+"""Authentication routes: register, login, logout and session lookups.
+
+The default session is an HttpOnly cookie pair.  The frontend may ask for an
+isolated session, in which case the access token travels in the response
+body instead of touching the shared cookies.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -12,6 +19,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _auth_payload(request: Request, response: Response, user: User, access: str, refresh: str, message: str):
+    """Attach auth cookies unless the caller asked for an isolated session.
+
+    Isolated sessions return the access token in the body so one tab can keep it
+    in sessionStorage without touching the cookies other tabs share.
+    """
     if request.headers.get("X-HKU-Session-Mode") == "isolated":
         return {"message": message, "user": user, "access_token": access}
     set_auth_cookies(response, access, refresh)
@@ -19,6 +31,11 @@ def _auth_payload(request: Request, response: Response, user: User, access: str,
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
 def register(payload: RegisterIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Create a student account and sign it in.
+
+    Raises:
+        HTTPException: 409 when the username or email is already taken.
+    """
     username = payload.username.strip().lower()
     email = str(payload.email).lower()
     if db.scalar(select(User).where(or_(User.username == username, User.email == email))):
@@ -32,6 +49,11 @@ def register(payload: RegisterIn, request: Request, response: Response, db: Sess
 
 @router.post("/login", response_model=AuthResponse)
 def login(payload: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Sign in with a username or email and issue fresh tokens.
+
+    Raises:
+        HTTPException: 401 when the password does not match.
+    """
     identifier = payload.username.strip().lower()
     user = db.scalar(select(User).where(or_(User.username == identifier, User.email == identifier)))
     if not user or not verify_password(payload.password, user.password_hash):
@@ -43,14 +65,17 @@ def login(payload: LoginIn, request: Request, response: Response, db: Session = 
 def logout(request: Request, response: Response):
     # Isolated sessions are held in the calling tab's sessionStorage.  Do not
     # delete the host-wide fallback cookie on behalf of another tab.
+    """Clear the auth cookies for a cookie-based session."""
     if request.headers.get("X-HKU-Session-Mode") != "isolated":
         clear_auth_cookies(response)
     return {"message": "Logged out"}
 
 @router.get("/session", response_model=UserOut)
 def session(user: User = Depends(current_user)):
+    """Return the signed-in user for the cookie or bearer session."""
     return user
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user)):
+    """Return the signed-in user; alias of ``/session``."""
     return user

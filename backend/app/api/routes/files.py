@@ -1,3 +1,9 @@
+"""Generic file upload and download endpoints.
+
+Uploads go through the document pipeline so the same asset can be bound to
+assignments, submissions and course materials.
+"""
+
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -16,6 +22,13 @@ router = APIRouter(prefix="/api/files", tags=["files"])
 
 @router.post("", status_code=201)
 def upload_file(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Upload a file through the processing pipeline.
+
+    Returns the asset, its document and the queued processing job.
+
+    Raises:
+        HTTPException: 400 when the file fails validation.
+    """
     try:
         asset, document, job = upload_asset_stream(db, uploader_id=user.id, filename=file.filename or "upload", mime_type=file.content_type, file=file.file)
     except ValueError as exc:
@@ -24,6 +37,12 @@ def upload_file(file: UploadFile = File(...), user: User = Depends(current_user)
 
 @router.get("/{storage_key}")
 def download_file(storage_key: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Stream a stored file to its uploader or an admin.
+
+    Raises:
+        HTTPException: 404 for unknown keys, path traversal attempts, or files
+            the caller does not own.
+    """
     if Path(storage_key).name != storage_key:
         raise HTTPException(status_code=404, detail="File not found")
     asset = db.scalar(select(FileAsset).where(FileAsset.storage_key == storage_key))

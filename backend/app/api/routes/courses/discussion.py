@@ -1,7 +1,10 @@
+"""Course discussion routes: threads, replies, likes and deletion."""
+
 from .common import *  # noqa: F401,F403
 
 @router.get("/{course_id}/discussion", response_model=list[DiscussionCommentOut])
 def list_discussion(course_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """List top-level comments, newest thread activity first."""
     _course_for_user(course_id, user, db)
     comments = db.scalars(
         select(DiscussionComment)
@@ -19,6 +22,7 @@ def list_discussion(course_id: str, user: User = Depends(current_user), db: Sess
 
 @router.post("/{course_id}/discussion", response_model=DiscussionCommentOut, status_code=201)
 def create_discussion_comment(course_id: str, payload: DiscussionCommentCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Create a top-level comment in the course discussion."""
     _course_for_user(course_id, user, db)
     comment = DiscussionComment(course_id=course_id, author_id=user.id, content=payload.content)
     db.add(comment)
@@ -30,6 +34,11 @@ def create_discussion_comment(course_id: str, payload: DiscussionCommentCreate, 
 
 @router.post("/{course_id}/discussion/{comment_id}/replies", response_model=DiscussionCommentOut, status_code=201)
 def create_discussion_reply(course_id: str, comment_id: str, payload: DiscussionCommentCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Reply to a top-level comment.
+
+    Raises:
+        HTTPException: 400 when the target comment is itself a reply.
+    """
     _course_for_user(course_id, user, db)
     parent = _discussion_comment_or_404(course_id, comment_id, db)
     if parent.parent_id is not None:
@@ -44,6 +53,7 @@ def create_discussion_reply(course_id: str, comment_id: str, payload: Discussion
 
 @router.put("/{course_id}/discussion/{comment_id}/like", response_model=DiscussionLikeOut)
 def like_discussion_comment(course_id: str, comment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Add the caller's like once and return the new count."""
     _course_for_user(course_id, user, db)
     comment = _discussion_comment_or_404(course_id, comment_id, db)
     like = db.scalar(select(DiscussionLike).where(DiscussionLike.comment_id == comment.id, DiscussionLike.user_id == user.id))
@@ -56,6 +66,7 @@ def like_discussion_comment(course_id: str, comment_id: str, user: User = Depend
 
 @router.delete("/{course_id}/discussion/{comment_id}/like", response_model=DiscussionLikeOut)
 def unlike_discussion_comment(course_id: str, comment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Remove the caller's like and return the new count."""
     _course_for_user(course_id, user, db)
     comment = _discussion_comment_or_404(course_id, comment_id, db)
     like = db.scalar(select(DiscussionLike).where(DiscussionLike.comment_id == comment.id, DiscussionLike.user_id == user.id))
@@ -68,6 +79,7 @@ def unlike_discussion_comment(course_id: str, comment_id: str, user: User = Depe
 
 @router.delete("/{course_id}/discussion/{comment_id}", status_code=204)
 def delete_discussion_comment(course_id: str, comment_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Delete a comment as its author, its course teacher or an admin."""
     course = _course_for_user(course_id, user, db)
     comment = _discussion_comment_or_404(course_id, comment_id, db)
     if comment.author_id != user.id and user.role not in {UserRole.admin} and course.teacher_id != user.id:

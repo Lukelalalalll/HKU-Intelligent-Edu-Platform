@@ -1,3 +1,11 @@
+"""Legacy ``/api/ppt`` HTTP surface kept during the PPT route migration.
+
+The split modules under ``app.api.routes.ppt`` select routes from this
+router, so the handler bodies still live here.  Every handler stays a thin
+delegation to ``PptRouteService``; state, authorization and job control
+belong to the service layer.
+"""
+
 import asyncio
 import json
 import shutil
@@ -24,20 +32,25 @@ export_executor = None  # compatibility alias; dispatch is centralized
 
 
 def svc(db: Session = Depends(get_db), user: User = teacher) -> PptRouteService:
+    """Build the route service bound to the request session and teacher."""
     return PptRouteService(db, user)
 
 
+# List the caller's PPT projects.
 @router.get("/projects")
 def list_projects(service: PptRouteService = Depends(svc)): return {"items": service.list_projects()}
 
+# List the built-in theme packs.
 @router.get("/themes")
 def themes(): return {"items": list_themes()}
 
+# List the layouts a theme provides.
 @router.get("/themes/{theme_id}/layouts")
 def theme_layouts(theme_id: str): return {"items": list_layouts(theme_id)}
 
 @router.get("/themes/{theme_id}/layouts/{layout_id}/preview.svg")
 def theme_layout_preview(theme_id: str, layout_id: str):
+    """Render a layout preview as SVG using sample content."""
     from types import SimpleNamespace
     layouts = {item["id"]: item for item in list_layouts(theme_id)}
     layout = layouts.get(layout_id)
@@ -48,16 +61,19 @@ def theme_layout_preview(theme_id: str, layout_id: str):
     return Response(content=render_slide_svg(page, get_theme(theme_id), layout), media_type="image/svg+xml")
 
 
+# Create a PPT project owned by the caller.
 @router.post("/projects", status_code=201)
 def create_project(payload: ProjectCreateIn, service: PptRouteService = Depends(svc)): return service.create_project(payload.title, payload.request_text, payload.course_id)
 
 
+# Return one project serialized for the studio UI.
 @router.get("/projects/{project_id}")
 def get_project(project_id: str, service: PptRouteService = Depends(svc)): return service.serialize_project(service.project(project_id))
 
 
 @router.patch("/projects/{project_id}")
 def patch_project(project_id: str, payload: ProjectPatchIn, service: PptRouteService = Depends(svc)):
+    """Update the title and request text of a project."""
     p = service.project(project_id)
     if payload.title is not None: p.title = payload.title.strip() or p.title
     if payload.request_text is not None: p.request_text = payload.request_text.strip()
@@ -66,15 +82,18 @@ def patch_project(project_id: str, payload: ProjectPatchIn, service: PptRouteSer
 
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: str, service: PptRouteService = Depends(svc)):
+    """Delete a project owned by the caller."""
     service.delete_project(project_id); return {"message": "项目已删除"}
 
 
+# Return the requirement interview state for a project.
 @router.get("/projects/{project_id}/requirements")
 def get_requirements(project_id: str, service: PptRouteService = Depends(svc)): return service.requirements(project_id)
 
 
 @router.post("/projects/{project_id}/requirements/chat")
 def requirement_chat(project_id: str, payload: RequirementChatIn, service: PptRouteService = Depends(svc)):
+    """Answer one requirement interview turn."""
     return service.requirement_chat(project_id, payload.content, payload.option_id, payload.option_label, payload.bootstrap)
 
 
@@ -103,59 +122,75 @@ def requirement_chat_stream(project_id: str, payload: RequirementChatIn, service
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# Apply explicit edits to the requirement document.
 @router.patch("/projects/{project_id}/requirements")
 def patch_requirements(project_id: str, payload: RequirementPatchIn, service: PptRouteService = Depends(svc)): return service.patch_requirements(project_id, payload.model_dump())
 
 
+# Derive the structured requirements from the interview so far.
 @router.post("/projects/{project_id}/requirements:generate")
 def generate_requirements(project_id: str, service: PptRouteService = Depends(svc)): return service.generate_requirements(project_id)
 
 
+# Generate the outline with the requested page count.
 @router.post("/projects/{project_id}/outline:generate")
 def generate_outline(project_id: str, payload: OutlineGenerateIn, service: PptRouteService = Depends(svc)): return service.generate_outline(project_id, payload.page_count_target)
 
+# Select the theme used for layout and design generation.
 @router.post("/projects/{project_id}/theme")
 def select_theme(project_id: str, payload: ThemeSelectIn, service: PptRouteService = Depends(svc)): return service.select_theme(project_id, payload.theme_id)
 
+# Assign layouts to the project's pages.
 @router.put("/projects/{project_id}/layouts")
 def assign_layouts(project_id: str, payload: LayoutAssignmentsIn, service: PptRouteService = Depends(svc)): return service.assign_layouts(project_id, payload.assignments, payload.mode)
 
 @router.post("/projects/{project_id}/design:generate")
 def generate_design(project_id: str, service: PptRouteService = Depends(svc)):
+    """Queue background generation of page content and design."""
     return service.start_generation(project_id)
 
 
 @router.get("/projects/{project_id}/generation-jobs/{job_id}")
 def generation_job(project_id: str, job_id: str, service: PptRouteService = Depends(svc)):
+    """Return the state of one generation job."""
     return service.generation_job(project_id, job_id)
 
 
 @router.post("/projects/{project_id}/generation-jobs/{job_id}:cancel")
 def cancel_generation(project_id: str, job_id: str, service: PptRouteService = Depends(svc)):
+    """Cancel a running generation job."""
     return service.cancel_generation(project_id, job_id)
 
 
 @router.post("/projects/{project_id}/generation-jobs/{job_id}:retry")
 def retry_generation(project_id: str, job_id: str, service: PptRouteService = Depends(svc)):
+    """Cancel the job and start generation again."""
     service.cancel_generation(project_id, job_id)
     return service.start_generation(project_id)
 
 
 @router.get("/projects/{project_id}/pages")
 def list_pages(project_id: str, service: PptRouteService = Depends(svc)):
+    """List page summaries in display order."""
     p = service.project(project_id); return {"items": [service.serialize_page(x) for x in sorted(p.pages, key=lambda x: x.sort_order)]}
 
 
+# Return one page with its document.
 @router.get("/projects/{project_id}/pages/{page_id}")
 def get_page(project_id: str, page_id: str, service: PptRouteService = Depends(svc)): return service.serialize_page(service.page(project_id, page_id))
 
 
 @router.put("/projects/{project_id}/pages/{page_id}/visual-selection")
 def save_visual_selection(project_id: str, page_id: str, payload: VisualSelectionIn, service: PptRouteService = Depends(svc)):
+    """Persist the confirmed asset ids for one page.
+
+    An empty list confirms that the page intentionally uses no images.
+    """
     return service.save_visual_selection(project_id, page_id, payload.asset_ids)
 
 @router.get("/projects/{project_id}/pages/{page_id}/preview.svg")
 def preview_page(project_id: str, page_id: str, layout_id: str | None = Query(default=None), service: PptRouteService = Depends(svc)):
+    """Render the page preview as SVG."""
     return Response(content=service.preview_svg(project_id, page_id, layout_id), media_type="image/svg+xml")
 
 
@@ -171,17 +206,24 @@ def page_asset(project_id: str, filename: str, service: PptRouteService = Depend
 
 
 def _editor_asset_out(asset: PptEditorAsset) -> dict:
+    """Serialize an editor asset with its file URL."""
     return {"id": asset.id, "url": f"/api/ppt/projects/{asset.project_id}/editor/assets/{asset.id}/file", "name": asset.name, "mime": asset.mime, "width": asset.width, "height": asset.height, "size_bytes": asset.size_bytes, "sha256": asset.sha256, "alt": asset.alt, "source_url": asset.source_url, "license": asset.license}
 
 
 @router.get("/projects/{project_id}/editor/assets")
 def list_editor_assets(project_id: str, service: PptRouteService = Depends(svc)):
+    """List the editor assets of a project, newest first."""
     service.project(project_id)
     return {"items": [_editor_asset_out(item) for item in service.db.scalars(select(PptEditorAsset).where(PptEditorAsset.project_id == project_id).order_by(PptEditorAsset.created_at.desc())).all()]}
 
 
 @router.post("/projects/{project_id}/editor/assets", status_code=201)
 def upload_editor_asset(project_id: str, file: UploadFile = File(...), page_id: str | None = Query(default=None), service: PptRouteService = Depends(svc)):
+    """Store an image for the canvas editor.
+
+    Raises:
+        HTTPException: 415 for non-image uploads, 413 above 20 MB.
+    """
     project = service.project(project_id)
     if page_id:
         service.page(project_id, page_id)
@@ -212,6 +254,7 @@ def upload_editor_asset(project_id: str, file: UploadFile = File(...), page_id: 
 
 @router.get("/projects/{project_id}/editor/assets/{asset_id}/file")
 def get_editor_asset(project_id: str, asset_id: str, service: PptRouteService = Depends(svc)):
+    """Stream an editor asset file."""
     service.project(project_id)
     asset = service.db.scalar(select(PptEditorAsset).where(PptEditorAsset.project_id == project_id, PptEditorAsset.id == asset_id))
     if not asset or not Path(asset.storage_path).is_file():
@@ -221,6 +264,7 @@ def get_editor_asset(project_id: str, asset_id: str, service: PptRouteService = 
 
 @router.delete("/projects/{project_id}/editor/assets/{asset_id}")
 def delete_editor_asset(project_id: str, asset_id: str, service: PptRouteService = Depends(svc)):
+    """Delete an editor asset row and its stored file."""
     service.project(project_id)
     asset = service.db.scalar(select(PptEditorAsset).where(PptEditorAsset.project_id == project_id, PptEditorAsset.id == asset_id))
     if not asset:
@@ -231,32 +275,39 @@ def delete_editor_asset(project_id: str, asset_id: str, service: PptRouteService
     return {"ok": True}
 
 
+# Apply a partial update to one page.
 @router.patch("/projects/{project_id}/pages/{page_id}")
 def patch_page(project_id: str, page_id: str, payload: PagePatchIn, service: PptRouteService = Depends(svc)): return service.patch_page(project_id, page_id, payload.model_dump())
 
 
+# Run one assistant-style action on a page.
 @router.post("/projects/{project_id}/pages/{page_id}/actions")
 def page_action(project_id: str, page_id: str, payload: ActionIn, service: PptRouteService = Depends(svc)): return service.run_action(project_id, page_id, payload.action_type, payload.replace_existing)
 
 
+# Run one action across every page of the project.
 @router.post("/projects/{project_id}/actions/batch")
 def batch_action(project_id: str, payload: BatchIn, service: PptRouteService = Depends(svc)): return service.run_action(project_id, None, payload.action_type)
 
 @router.get("/projects/{project_id}/visual-jobs/{job_id}")
 def visual_job(project_id: str, job_id: str, service: PptRouteService = Depends(svc)):
+    """Return the state of one visual research job."""
     return service.generation_job(project_id, job_id)
 
 @router.post("/projects/{project_id}/visual-jobs/{job_id}:cancel")
 def cancel_visual_job(project_id: str, job_id: str, service: PptRouteService = Depends(svc)):
+    """Cancel a running visual research job."""
     return service.cancel_generation(project_id, job_id)
 
 
+# Upload a source document, optionally attached to one page.
 @router.post("/projects/{project_id}/files", status_code=201)
 def upload_file(project_id: str, page_id: str | None = Query(default=None), file: UploadFile = File(...), service: PptRouteService = Depends(svc)): return service.upload_document(project_id, page_id, file)
 
 
 @router.post("/projects/{project_id}/messages")
 def message(project_id: str, payload: MessageIn, service: PptRouteService = Depends(svc)):
+    """Send one assistant message and return the routed response."""
     return service.route_message(project_id, payload.content, payload.page_id, payload.option_id, payload.option_label)
 
 
@@ -305,29 +356,39 @@ def message_stream(project_id: str, payload: MessageIn, service: PptRouteService
 
 @router.get("/projects/{project_id}/messages")
 def list_messages(project_id: str, page_id: str | None = Query(default=None), service: PptRouteService = Depends(svc)):
+    """List assistant messages, optionally filtered by page."""
     return {"items": service.list_messages(project_id, page_id)}
 
 
 @router.get("/projects/{project_id}/sources")
 def list_sources(project_id: str, service: PptRouteService = Depends(svc)):
+    """List the source documents of the project."""
     return {"items": service.list_sources(project_id)}
 
 @router.get("/projects/{project_id}/checkpoints")
 def list_checkpoints(project_id: str, service: PptRouteService = Depends(svc)):
+    """List workflow checkpoints and their confirmation state."""
     return {"items": service.list_checkpoints(project_id)}
 
 
 @router.post("/projects/{project_id}/checkpoints/{checkpoint_code}:confirm")
 def confirm_checkpoint(project_id: str, checkpoint_code: str, payload: CheckpointConfirmIn, service: PptRouteService = Depends(svc)):
+    """Confirm a workflow checkpoint with an optional note."""
     return service.confirm_checkpoint(project_id, checkpoint_code, payload.note)
 
 
 @router.patch("/projects/{project_id}/pages/{page_id}/document")
 def patch_document(project_id: str, page_id: str, payload: DocumentPatchIn, service: PptRouteService = Depends(svc)):
+    """Save one page document at the revision the editor had loaded."""
     return service.patch_document(project_id, page_id, payload.document, payload.revision)
 
 @router.post("/projects/{project_id}/pages/{page_id}/document:{direction}")
 def restore_document(project_id: str, page_id: str, direction: str, payload: DocumentPatchIn, service: PptRouteService = Depends(svc)):
+    """Undo or redo a page document revision.
+
+    Raises:
+        HTTPException: 400 for a direction other than ``undo`` or ``redo``.
+    """
     if direction not in {"undo", "redo"}:
         from fastapi import HTTPException
         raise HTTPException(400, "仅支持 undo 或 redo")
@@ -336,6 +397,11 @@ def restore_document(project_id: str, page_id: str, direction: str, payload: Doc
 
 @router.patch("/projects/{project_id}/storyboard")
 def patch_storyboard(project_id: str, payload: StoryboardPatchIn, service: PptRouteService = Depends(svc)):
+    """Reorder pages to the given full list of page ids.
+
+    Raises:
+        HTTPException: 400 unless the id set matches the project's pages.
+    """
     p = service.project(project_id)
     pages = {page.id: page for page in p.pages}
     if set(payload.page_ids) != set(pages):
@@ -349,6 +415,11 @@ def patch_storyboard(project_id: str, payload: StoryboardPatchIn, service: PptRo
 
 @router.get("/projects/{project_id}/events/stream")
 async def stream_events(project_id: str, request_id: str | None = Query(default=None), last_event_id: str | None = Header(default=None, alias="Last-Event-ID"), service: PptRouteService = Depends(svc)):
+    """Stream project events over SSE, resuming after ``Last-Event-ID``.
+
+    The request session is closed before streaming; each poll uses a
+    short-lived session so a long connection does not hold a pool slot.
+    """
     service.project(project_id)
     current = int(last_event_id or 0) if (last_event_id or "0").isdigit() else 0
     user_id = service.user.id
@@ -382,6 +453,7 @@ async def stream_events(project_id: str, request_id: str | None = Query(default=
 
 @router.post("/projects/{project_id}/exports", status_code=202)
 def export_project(project_id: str, payload: ExportIn, service: PptRouteService = Depends(svc)):
+    """Queue a PPTX export, reusing an active job when one exists."""
     p = service.project(project_id)
     active = service.db.scalar(select(PptExportJob).where(PptExportJob.project_id == p.id, PptExportJob.status.in_(["queued", "running"])).order_by(PptExportJob.created_at.desc()))
     if active: return {"id": active.id, "status": active.status}
@@ -395,6 +467,7 @@ def export_project(project_id: str, payload: ExportIn, service: PptRouteService 
 
 @router.get("/projects/{project_id}/exports/{export_id}/download")
 def download_export(project_id: str, export_id: str, service: PptRouteService = Depends(svc)):
+    """Download the rendered PPTX of a completed export."""
     service.project(project_id); job = service.db.scalar(select(PptExportJob).where(PptExportJob.id == export_id, PptExportJob.project_id == project_id))
     if not job: raise HTTPException(404, "导出任务不存在")
     if job.status != "completed" or not job.file_path: raise HTTPException(409, {"status": job.status, "error": job.error_message or "导出尚未完成"})
@@ -403,6 +476,7 @@ def download_export(project_id: str, export_id: str, service: PptRouteService = 
 
 @router.get("/projects/{project_id}/exports/{export_id}")
 def export_status(project_id: str, export_id: str, service: PptRouteService = Depends(svc)):
+    """Return the state of one export job."""
     service.project(project_id)
     job = service.db.scalar(select(PptExportJob).where(PptExportJob.id == export_id, PptExportJob.project_id == project_id))
     if not job: raise HTTPException(404, "导出任务不存在")
@@ -410,6 +484,11 @@ def export_status(project_id: str, export_id: str, service: PptRouteService = De
 
 @router.get("/exports/available")
 def available_exports(user: User = teacher, db: Session = Depends(get_db)):
+    """List exportable projects with a lazily built picker PPTX.
+
+    A project whose design is complete but was never exported gets a cached
+    picker file on first listing, so the material picker has a real size.
+    """
     projects = db.scalars(select(PptProject).where(PptProject.owner_id == user.id).options(selectinload(PptProject.pages))).all()
     items = []
     for project in projects:
@@ -436,6 +515,11 @@ def available_exports(user: User = teacher, db: Session = Depends(get_db)):
 
 @router.post("/exports/{export_id}/copy", status_code=201)
 def copy_export(export_id: str, user: User = teacher, db: Session = Depends(get_db)):
+    """Materialize an export as a ``FileAsset`` owned by the caller.
+
+    Accepts either a real export id or the synthetic ``project:<id>`` id
+    produced by ``/exports/available``.
+    """
     if export_id.startswith("project:"):
         project_id = export_id.split(":", 1)[1]
         project = db.scalar(select(PptProject).where(PptProject.id == project_id, PptProject.owner_id == user.id))
