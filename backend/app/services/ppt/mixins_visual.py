@@ -1,7 +1,15 @@
+"""Visual research mixin: queries, image search, caching and visual plans.
+
+Search results are deduped and ranked, downloads are restricted to public
+HTTP(S) hosts, and a failed cache keeps a remote fallback so the deck still
+renders.
+"""
+
 from .context import *  # noqa: F401,F403
 
 class _VisualMixin:
     def preview_svg(self, project_id: str, page_id: str, layout_id: str | None = None) -> str:
+        """Render a page preview as SVG using the project theme."""
         p = self.project(project_id); page = self.page(project_id, page_id)
         from app.services.ppt_theme import get_theme, list_layouts, render_slide_svg
         layouts = {item["id"]: item for item in list_layouts(p.theme_id or "light-academic")}
@@ -10,6 +18,11 @@ class _VisualMixin:
 
 
     def patch_page(self, project_id: str, page_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update page structure and mark downstream artifacts stale.
+
+        Editing the outline invalidates search, visual, summary, draft and
+        design for the page.
+        """
         p = self.project(project_id); page = self.page(project_id, page_id)
         page.title, page.bullets_json = payload["title"].strip(), payload.get("bullets", [])[:8]
         if payload.get("section_title") is not None: page.section_title = payload["section_title"]
@@ -39,6 +52,11 @@ class _VisualMixin:
 
 
     def insert_page(self, project_id: str, title: str, bullets: list[str], section_title: str = "", document: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Append a slide, optionally with an existing document.
+
+        The page-count target follows the real page count so the storyboard
+        stays consistent after inserts.
+        """
         p = self.project(project_id)
         page = PptPage(
             project_id=p.id,
@@ -61,6 +79,15 @@ class _VisualMixin:
 
 
     def save_visual_selection(self, project_id: str, page_id: str, asset_ids: list[str]) -> dict[str, Any]:
+        """Persist the confirmed asset ids for one page.
+
+        Ids must belong to the page's candidate manifest; an empty list confirms
+        that the page intentionally uses no images.
+
+        Raises:
+            HTTPException: 422 when more than six ids are sent or an id is
+                unknown.
+        """
         page = self.page(project_id, page_id)
         ids = list(dict.fromkeys(str(x) for x in asset_ids))
         if len(ids) > 6:
@@ -80,6 +107,11 @@ class _VisualMixin:
 
 
     def run_action(self, project_id: str, page_id: str | None, action_type: str, replace_existing: bool = True) -> dict[str, Any]:
+        """Execute one assistant action and record its run row.
+
+        The router graph decides whether the action is allowed, and a failed run
+        keeps its error on the row for the client to inspect.
+        """
         p = self.project(project_id); page = self.page(project_id, page_id) if page_id else None
         if action_type == "project_batch_visual":
             return self.start_visual_research(project_id)
@@ -105,6 +137,10 @@ class _VisualMixin:
 
 
     def _page_queries(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        """Derive page search queries from the outline.
+
+        At most six queries are kept: one outline match plus keyword expansions.
+        """
         keywords = extract_keywords(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))
         text = query_text(page.section_title, page.title, page.bullets_json or [], page.page_role)
         queries = [{"query_text": text, "query_purpose": "outline keyword match"}]
@@ -114,6 +150,11 @@ class _VisualMixin:
 
 
     def _page_search(self, p: PptProject, page: PptPage, replace: bool) -> dict[str, Any]:
+        """Run page search with the configured provider or native web search.
+
+        Without a search provider URL the native ``web_search`` tool is used;
+        failing queries are counted rather than raised.
+        """
         if not page.search_queries_json: self._page_queries(p, page)
         if not settings.search_provider_url:
             # DeepSeek's native web_search is exposed by the Responses API.
@@ -246,6 +287,7 @@ class _VisualMixin:
 
     @staticmethod
     def _dedupe_search_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Dedupe results by URL, link or title."""
         seen: set[str] = set(); output: list[dict[str, Any]] = []
         for raw in results:
             if not isinstance(raw, dict):
@@ -260,6 +302,7 @@ class _VisualMixin:
 
     @staticmethod
     def _image_url(item: dict[str, Any]) -> str:
+        """Return the first usable image URL from one search result."""
         for key in ("image_url", "thumbnail", "thumbnail_url", "image", "src", "url"):
             value = item.get(key)
             if isinstance(value, dict):
@@ -272,6 +315,12 @@ class _VisualMixin:
 
 
     def _download_image(self, p: PptProject, page: PptPage, url: str, index: int) -> dict[str, Any] | None:
+        """Download and cache one image under the project asset directory.
+
+        Only public HTTP(S) hosts are fetched; private, loopback and link-local
+        targets are rejected before the request.  A failure returns a status row
+        instead of raising.
+        """
         if not url or url.startswith("data:"):
             return {"id": f"asset-{page.id}-{index}", "src": url, "public_url": url, "source_url": url, "status": "ready"} if url else None
         try:
@@ -331,6 +380,13 @@ class _VisualMixin:
 
 
     def _visual_research(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        """Build the page's candidate image set.
+
+        Existing citations with direct image URLs are reused instead of re-
+        running search; otherwise browser search, Wikimedia and Openverse are
+        tried in order.  At most six ready candidates are kept, and a changed
+        set resets the user's selection.
+        """
         if not getattr(page, "search_queries_json", None) and not getattr(page, "citations_json", None):
             self._page_queries(p, page)
         keywords = extract_keywords(getattr(page, "section_title", ""), page.title, getattr(page, "bullets_json", []) or [], getattr(page, "page_role", ""))

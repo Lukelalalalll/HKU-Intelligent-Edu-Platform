@@ -1,3 +1,9 @@
+"""Keyword retrieval over processed document chunks.
+
+Visibility is resolved from context bindings first, then chunks are ranked
+by term frequency; this is lexical retrieval, not embedding search.
+"""
+
 from __future__ import annotations
 
 import re
@@ -8,10 +14,20 @@ from app.models import Assignment, Course, Enrollment, FileContextBinding, FileP
 
 
 def _terms(text: str) -> list[str]:
+    """Split a question into normalized search terms."""
     return [item.casefold() for item in re.findall(r"[\w\u4e00-\u9fff]{2,}", text or "")]
 
 
 def retrieve_chunks(db: Session, question: str, *, user_id: str, course_id: str | None = None, conversation_id: str | None = None, attachment_ids: list[str] | None = None, top_k: int = 8, include_images: bool = False) -> list[dict]:
+    """Return the best chunks for a question within the caller's visibility.
+
+    Course bindings, submission bindings and conversation attachments widen or
+    narrow the candidate documents by role; image chunks are only included when
+    requested.
+
+    Returns:
+        Chunks with document metadata, an artifact URL and a lexical score.
+    """
     visible = []
     if course_id:
         enrolled = db.scalar(select(Enrollment.id).where(Enrollment.course_id == course_id, Enrollment.student_id == user_id))
@@ -58,6 +74,7 @@ def retrieve_chunks(db: Session, question: str, *, user_id: str, course_id: str 
 
 
 def context_text(evidence: list[dict], max_chars: int = 12000) -> str:
+    """Render retrieved evidence as one prompt block under a cap."""
     parts, size = [], 0
     for item in evidence:
         marker = f"[{item['filename']} slide {item['slide_number']}]" if item.get("slide_number") else f"[{item['filename']} p.{item.get('page')} ]"

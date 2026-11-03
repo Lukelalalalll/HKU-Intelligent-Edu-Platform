@@ -1,3 +1,5 @@
+"""Video generation public exports: providers, pipeline and schemas."""
+
 from .base import VideoProvider, VideoProviderError
 from .coze_provider import CozeProvider
 from .local_provider import LocalProvider

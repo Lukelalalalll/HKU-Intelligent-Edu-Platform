@@ -1,19 +1,27 @@
+"""Parser artifact helpers: JSON writing, manifest validation and publishing."""
+
 from __future__ import annotations
 import json, os, shutil
 from pathlib import Path
 from typing import Any
 
 def write_json(path: Path, value: Any) -> None:
+    """Write a JSON artifact, creating parent directories first."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def validate_manifest(root: Path, manifest: dict) -> None:
+    """Raise when a declared artifact is missing from the staging root."""
     for name in manifest.get("page_files", []):
         if not (root / name).is_file(): raise ValueError(f"missing artifact: {name}")
     for name in ("manifest.json", "document.md", "chunks.jsonl"):
         if not (root / name).is_file(): raise ValueError(f"missing artifact: {name}")
 
 def atomic_publish(temp_root: Path, final_root: Path) -> None:
+    """Swap a staged artifact directory into place.
+
+    The previous directory is restored when the final rename fails.
+    """
     final_root.parent.mkdir(parents=True, exist_ok=True)
     backup = final_root.with_name(final_root.name + ".old")
     if backup.exists(): shutil.rmtree(backup, ignore_errors=True)

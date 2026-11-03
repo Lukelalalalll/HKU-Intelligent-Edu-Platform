@@ -1,7 +1,16 @@
+"""Generation mixin: background deck generation, visual research and design."""
+
 from .context import *  # noqa: F401,F403
 
 class _GenerationMixin:
     def start_generation(self, project_id: str) -> dict[str, Any]:
+        """Start deck generation, reusing an active job for the project.
+
+        A per-project lock makes concurrent submissions resolve to the same job.
+
+        Raises:
+            HTTPException: 409 when the project has no theme yet.
+        """
         p = self.project(project_id)
         if not p.theme_id:
             raise HTTPException(409, "请先选择主题")
@@ -51,6 +60,7 @@ class _GenerationMixin:
 
 
     def generation_job(self, project_id: str, job_id: str) -> dict[str, Any]:
+        """Return one generation job of a project, or raise 404."""
         self.project(project_id)
         job = self.db.scalar(select(PptGenerationJob).where(PptGenerationJob.id == job_id, PptGenerationJob.project_id == project_id))
         if not job:
@@ -59,6 +69,10 @@ class _GenerationMixin:
 
 
     def cancel_generation(self, project_id: str, job_id: str) -> dict[str, Any]:
+        """Cancel a queued or running job and record the terminal state.
+
+        A finished job is returned unchanged.
+        """
         self.project(project_id)
         job = self.db.scalar(select(PptGenerationJob).where(PptGenerationJob.id == job_id, PptGenerationJob.project_id == project_id))
         if not job: raise HTTPException(404, "生成任务不存在")
@@ -69,6 +83,13 @@ class _GenerationMixin:
 
 
     def generate_design(self, project_id: str) -> dict[str, Any]:
+        """Lay out and design every page inside the request.
+
+        This is the synchronous fallback path: the model proposes a whole-deck
+        layout mapping, a deterministic rule fills skipped pages, and each page
+        falls back to the template document when the model output fails the
+        quality check.
+        """
         p = self.project(project_id)
         if not p.theme_id:
             raise HTTPException(409, "请先选择主题")

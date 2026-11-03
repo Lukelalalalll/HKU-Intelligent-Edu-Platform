@@ -1,3 +1,5 @@
+"""Export domain facade: enqueue and read PPT export jobs."""
+
 from pathlib import Path
 from sqlalchemy import select
 from app.models import PptExportJob
@@ -7,6 +9,7 @@ from .services_base import PptServiceBase
 class ExportService(PptServiceBase):
     """PPT export job lifecycle; rendering remains in the worker handler."""
     def enqueue(self, project_id, filename=None):
+        """Queue one export unless an active job already exists."""
         project = self._app.project(project_id)
         active = self.db.scalar(select(PptExportJob).where(PptExportJob.project_id == project.id, PptExportJob.status.in_(["queued", "running"])).order_by(PptExportJob.created_at.desc()))
         if active: return {"job_id": active.id, "status": active.status}
@@ -17,5 +20,6 @@ class ExportService(PptServiceBase):
         JobManager(self.db).enqueue("ppt_export", (job.id, project.id, filename), task_id)
         return {"job_id": job.id, "status": "queued"}
     def get(self, project_id, export_id):
+        """Return one export job of the project."""
         self._app.project(project_id)
         return self.db.scalar(select(PptExportJob).where(PptExportJob.id == export_id, PptExportJob.project_id == project_id))

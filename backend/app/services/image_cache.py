@@ -1,3 +1,5 @@
+"""Image download and SSRF guard for visual research assets."""
+
 from __future__ import annotations
 
 import hashlib, ipaddress, socket
@@ -8,6 +10,12 @@ import httpx
 
 
 def validate_public_url(url: str) -> str:
+    """Return the URL when it is a public http(s) image source.
+
+    Raises:
+        ValueError: for non-HTTP schemes, localhost, or hosts resolving to
+            private, loopback, link-local or reserved addresses.
+    """
     parsed = urlparse(str(url or ""))
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("仅允许 http/https 图片地址")
@@ -26,6 +34,12 @@ def validate_public_url(url: str) -> str:
 
 
 def download_image(url: str, root: Path, public_url: str, *, max_bytes: int = 8 * 1024 * 1024, timeout: float = 8) -> dict:
+    """Download and cache an image, keyed by its content hash.
+
+    Raises:
+        ValueError: for an unsafe host, an oversized body or a non-image
+            response.
+    """
     validate_public_url(url)
     response = httpx.get(url, follow_redirects=True, timeout=timeout, headers={"User-Agent": "HKU-Courseware-Agent/1.0"})
     response.raise_for_status()

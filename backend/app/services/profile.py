@@ -1,3 +1,5 @@
+"""Profile application service: account updates, password and avatar files."""
+
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
@@ -8,11 +10,18 @@ from app.core.security import hash_password, verify_password
 from app.models import FileAsset, User
 from app.storage import LocalStorage
 
+# Upload types accepted for avatars; anything else is rejected with 415.
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
+# Hard cap enforced before the avatar bytes reach storage.
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
 
 def update_profile(db: Session, user: User, name: str | None, email: str | None) -> User:
+    """Update the display name and email after validation.
+
+    Raises:
+        HTTPException: 422 for an empty name, 409 when the email is taken.
+    """
     if name is not None:
         normalized_name = name.strip()
         if not normalized_name:
@@ -29,6 +38,11 @@ def update_profile(db: Session, user: User, name: str | None, email: str | None)
 
 
 def change_password(db: Session, user: User, current_password: str, new_password: str) -> None:
+    """Verify the current password and persist a new hash.
+
+    Raises:
+        HTTPException: 400 when the current password is wrong or unchanged.
+    """
     if not verify_password(current_password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
     if current_password == new_password:
@@ -38,6 +52,7 @@ def change_password(db: Session, user: User, current_password: str, new_password
 
 
 def _stored_avatar_key(avatar_url: str | None) -> str | None:
+    """Return the storage key of the current avatar URL, if any."""
     if not avatar_url:
         return None
     key = avatar_url.rsplit("/", 1)[-1]
@@ -45,6 +60,12 @@ def _stored_avatar_key(avatar_url: str | None) -> str | None:
 
 
 def replace_avatar(db: Session, user: User, upload: UploadFile, storage: LocalStorage) -> User:
+    """Store a new avatar and remove the previous file.
+
+    Raises:
+        HTTPException: 415 for unsupported types, 413 above 5 MB, 400 for an
+            empty upload.
+    """
     if upload.content_type not in ALLOWED_AVATAR_TYPES:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Avatar must be JPEG, PNG, or WebP")
     content = upload.file.read(MAX_AVATAR_BYTES + 1)
@@ -86,6 +107,7 @@ def replace_avatar(db: Session, user: User, upload: UploadFile, storage: LocalSt
 
 
 def remove_avatar(db: Session, user: User, storage: LocalStorage) -> User:
+    """Clear the avatar URL and delete the stored file."""
     old_key = _stored_avatar_key(user.avatar_url)
     user.avatar_url = None
     db.commit()

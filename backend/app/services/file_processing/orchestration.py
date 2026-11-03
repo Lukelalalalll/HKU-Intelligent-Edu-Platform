@@ -1,3 +1,10 @@
+"""Document processing orchestration: parse, index and publish artifacts.
+
+A worker job runs here: the source is copied into a staging directory,
+parsed into pages and chunks, then published atomically before the terminal
+state is written to the document and job rows.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -18,6 +25,7 @@ from app.services.file_processing.artifacts import write_json
 from app.services.file_processing.parsers.utils import _pages_to_chunks
 
 def now_utc() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
@@ -26,6 +34,12 @@ def _sha256(content: bytes) -> str:
 
 
 def _process(db: Session, document: FileProcessingDocument, job: FileProcessingJob) -> None:
+    """Parse one document into pages, chunks and artifacts.
+
+    The source is staged in a temporary directory and published atomically only
+    after the manifest validates, so a failed run never replaces the previous
+    artifacts with a partial set.
+    """
     asset = db.get(FileAsset, document.file_asset_id) if document.file_asset_id else db.scalar(select(FileAsset).where(FileAsset.sha256 == document.sha256).order_by(FileAsset.created_at.asc()))
     if not asset:
         raise RuntimeError("原始文件不存在")
@@ -69,6 +83,11 @@ def _process(db: Session, document: FileProcessingDocument, job: FileProcessingJ
 
 
 def process_job(job_id: str) -> None:
+    """Process one queued job and record retry or failure state.
+
+    A failed attempt below the retry limit puts the job back to ``queued`` and
+    enqueues the next attempt after the session closes.
+    """
     db = SessionLocal()
     retry = False
     try:
@@ -99,6 +118,11 @@ def process_job(job_id: str) -> None:
 
 
 def enqueue_job(job_id: str, db: Session | None = None) -> None:
+    """Publish a file-processing job through the shared dispatcher.
+
+    A caller-supplied session is reused; otherwise a short-lived session is
+    opened and closed here.
+    """
     from app.jobs.manager import JobManager
     owns_session = db is None
     db = db or SessionLocal()
@@ -109,6 +133,10 @@ def enqueue_job(job_id: str, db: Session | None = None) -> None:
 
 
 def recover_jobs() -> None:
+    """Requeue jobs left queued or running by a restart.
+
+    Running jobs are reset to queued because the worker that owned them is gone.
+    """
     db = SessionLocal()
     try:
         jobs = db.scalars(select(FileProcessingJob).where(FileProcessingJob.status.in_(["queued", "running"]))).all()
@@ -124,6 +152,11 @@ def recover_jobs() -> None:
 def ensure_document_for_asset(db: Session, asset: FileAsset, *, target_type: str | None = None, target_id: str | None = None, owner_id: str | None = None, course_id: str | None = None, visibility: str = "owner", metadata: dict | None = None) -> tuple[FileProcessingDocument, FileProcessingJob]:
     # Processing is content-addressed. A second upload of the same bytes can
     # attach a new business binding to the already parsed document.
+    """Get or create the processing document and job for an upload.
+
+    Processing is content-addressed: the same bytes are parsed once and new
+    business bindings attach to the existing document.
+    """
     document = db.scalar(select(FileProcessingDocument).where(FileProcessingDocument.sha256 == asset.sha256).order_by(FileProcessingDocument.created_at.asc()))
     if document is None:
         document = db.scalar(select(FileProcessingDocument).where(FileProcessingDocument.file_asset_id == asset.id))
@@ -144,6 +177,7 @@ def ensure_document_for_asset(db: Session, asset: FileAsset, *, target_type: str
 
 
 def upload_asset(db: Session, *, uploader_id: str, filename: str, mime_type: str | None, content: bytes, target_type: str | None = None, target_id: str | None = None, owner_id: str | None = None, course_id: str | None = None, visibility: str = "owner", metadata: dict | None = None) -> tuple[FileAsset, FileProcessingDocument, FileProcessingJob]:
+    """Store bytes and return the asset with its document and job."""
     name, ext = validate_upload(filename, mime_type, len(content))
     digest = _sha256(content)
     asset = db.scalar(select(FileAsset).where(FileAsset.uploader_id == uploader_id, FileAsset.sha256 == digest, FileAsset.original_name == name))
@@ -157,6 +191,10 @@ def upload_asset(db: Session, *, uploader_id: str, filename: str, mime_type: str
 
 
 def bind_document(db: Session, document_id: str, *, target_type: str, target_id: str, owner_id: str | None = None, course_id: str | None = None, visibility: str = "owner", metadata: dict | None = None) -> FileContextBinding:
+    """Attach a document to a business target.
+
+    A repeated binding keeps the existing row and merges the supplied metadata.
+    """
     binding = db.scalar(select(FileContextBinding).where(FileContextBinding.document_id == document_id, FileContextBinding.target_type == target_type, FileContextBinding.target_id == target_id))
     if binding:
         if metadata:
@@ -175,4 +213,5 @@ def parse_document(source: Path, output_dir: Path, mime_type: str | None = None)
 
 
 def processing_root(document_id: str) -> Path:
+    """Return the artifact directory for one document id."""
     return settings.file_processing_path / document_id

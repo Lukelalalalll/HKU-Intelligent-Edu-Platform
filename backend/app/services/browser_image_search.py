@@ -1,3 +1,5 @@
+"""Headless-browser image search used by the visual research step."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,15 +8,29 @@ from urllib.parse import quote_plus
 
 
 def build_query(section_title: str, title: str, bullets: list[str], page_role: str = "") -> str:
+    """Build a bounded search query from outline text.
+
+    Duplicate parts are dropped and the result is capped at 240 characters.
+    """
     parts = [section_title, title, *bullets[:6], page_role]
     return " ".join(dict.fromkeys(str(x).strip() for x in parts if str(x).strip()))[:240]
 
 
 class BrowserImageSearch:
+    """Run Bing Images in a headless browser and extract candidates.
+
+    Every call launches and closes its own browser context; the sync wrapper is
+    for worker threads without an event loop.
+    """
     def __init__(self, *, mode="browser_worker", proxy=None, timeout=15, headless=True, executable_path=None):
         self.mode, self.proxy, self.timeout, self.headless, self.executable_path = mode, proxy, timeout, headless, executable_path
 
     async def search(self, query: str, limit: int = 12) -> list[dict]:
+        """Return image candidates for a query from Bing Images.
+
+        Raises:
+            RuntimeError: when Playwright is not installed.
+        """
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
@@ -41,4 +57,5 @@ class BrowserImageSearch:
                 await browser.close()
 
     def search_sync(self, query: str, limit: int = 12) -> list[dict]:
+        """Run ``search`` from a synchronous worker thread."""
         return asyncio.run(self.search(query, limit))

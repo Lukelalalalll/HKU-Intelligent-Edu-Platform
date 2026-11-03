@@ -1,3 +1,5 @@
+"""Upload validation: file names, extensions, sizes and declared MIME types."""
+
 from pathlib import Path
 
 from app.core.config import settings
@@ -5,16 +7,29 @@ from app.core.config import settings
 SUPPORTED_EXTENSIONS = {".pdf", ".pptx", ".docx", ".xlsx", ".xls", ".txt", ".md", ".markdown", ".csv", ".json", ".png", ".jpg", ".jpeg", ".webp"}
 
 
+# TODO(comment): verify this helper; ``datetime`` and ``timezone``
+# are not imported in this module and no caller uses it today.
 def now_utc() -> datetime:
+    """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
 def _safe_name(filename: str | None) -> str:
+    """Reduce a browser-supplied name to its final path component."""
     name = Path(filename or "upload").name.strip() or "upload"
     return name[:500]
 
 
 def validate_upload(filename: str | None, content_type: str | None, size: int) -> tuple[str, str]:
+    """Normalize and validate an upload name, type and size.
+
+    Returns:
+        The safe file name and its lowercase extension.
+
+    Raises:
+        ValueError: for unsupported extensions, an empty file, a size above the
+            limit, or a content type that contradicts the extension.
+    """
     name = _safe_name(filename)
     ext = Path(name).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:

@@ -1,7 +1,10 @@
+"""LangGraph lesson plan workflow with a deterministic fallback."""
+
 from typing import Any, TypedDict
 
 
 class LessonPlanState(TypedDict, total=False):
+    """State passed between workflow nodes."""
     project_id: str
     request_text: str
     stage: str
@@ -12,6 +15,7 @@ class LessonPlanState(TypedDict, total=False):
 class LessonPlanWorkflow:
     """LangGraph workflow with a deterministic fallback for minimal installs."""
     def __init__(self):
+        """Compile the graph, or leave it empty when LangGraph is missing."""
         self.graph = None
         try:
             from langgraph.graph import END, StateGraph
@@ -25,6 +29,7 @@ class LessonPlanWorkflow:
             pass
 
     def _emit(self, state, node, message):
+        """Append a node event and advance the state stage."""
         events = list(state.get("events", [])); events.append({"event_type": "node.completed", "payload": {"node": node, "message": message}})
         return {**state, "stage": node, "events": events}
 
@@ -36,6 +41,7 @@ class LessonPlanWorkflow:
     def _quality(self, state): return self._emit(state, "quality", "已完成基础质量检查")
 
     def invoke(self, state):
+        """Run the compiled graph, or the node sequence when it is absent."""
         if self.graph: return self.graph.invoke(state)
         for fn in (self._intake, self._outline, self._render, self._quality): state = fn(state)
         return state

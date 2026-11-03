@@ -1,3 +1,5 @@
+"""Zoom Server-to-Server OAuth, recurring meetings and Meeting SDK tokens."""
+
 from __future__ import annotations
 
 import base64
@@ -17,15 +19,18 @@ from app.services.course_terms import semester_date_range
 
 
 class ZoomError(RuntimeError):
+    """Failure from the Zoom API or configuration."""
     pass
 
 
 class ZoomNotConfigured(ZoomError):
+    """Raised when Zoom credentials are missing."""
     pass
 
 
 @dataclass(frozen=True)
 class Occurrence:
+    """One scheduled class occurrence in the course timezone."""
     start: datetime
     end: datetime
 
@@ -43,6 +48,10 @@ def _parse_hhmm(value: str) -> time:
 
 
 def next_occurrence(course: Course, schedule: CourseSchedule, now: datetime | None = None) -> Occurrence | None:
+    """Return the next occurrence of a weekly schedule.
+
+    Returns None once the next occurrence would fall past the semester end.
+    """
     timezone_name = schedule.timezone or course.timezone or settings.zoom_default_timezone
     tz = _zone(timezone_name)
     local_now = (now or datetime.now(timezone.utc)).astimezone(tz)
@@ -66,6 +75,11 @@ def next_occurrence(course: Course, schedule: CourseSchedule, now: datetime | No
 
 
 def within_window(occurrence: Occurrence | None, now: datetime | None = None) -> tuple[bool, bool]:
+    """Report ``(join_window, start_window)`` for an occurrence.
+
+    Joining opens 15 minutes early and closes 30 minutes after the end;
+    starting closes at the scheduled end.
+    """
     if not occurrence:
         return False, False
     current = now or datetime.now(timezone.utc)
@@ -75,6 +89,7 @@ def within_window(occurrence: Occurrence | None, now: datetime | None = None) ->
 
 
 class ZoomClient:
+    """Cached-token client for the Zoom REST API."""
     def __init__(self) -> None:
         self._token: str | None = None
         self._token_expires_at: datetime | None = None
@@ -82,6 +97,7 @@ class ZoomClient:
 
     @property
     def configured(self) -> bool:
+        """Return whether the server-to-server credentials are set."""
         return bool(settings.zoom_account_id and settings.zoom_client_id and settings.zoom_client_secret)
 
     def _ensure_configured(self) -> None:
@@ -89,6 +105,12 @@ class ZoomClient:
             raise ZoomNotConfigured("Zoom integration is not configured")
 
     def access_token(self) -> str:
+        """Return a cached access token, refreshing it when expired.
+
+        Raises:
+            ZoomNotConfigured: when credentials are missing.
+            ZoomError: when the OAuth exchange fails.
+        """
         self._ensure_configured()
         now = datetime.now(timezone.utc)
         with self._lock:
@@ -110,6 +132,11 @@ class ZoomClient:
             return self._token
 
     def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Call the Zoom API with retries for 429 and 5xx responses.
+
+        Raises:
+            ZoomError: when every attempt fails or the API returns an error.
+        """
         token = self.access_token()
         headers = dict(kwargs.pop("headers", {}))
         headers["Authorization"] = f"Bearer {token}"
@@ -131,6 +158,7 @@ class ZoomClient:
         raise ZoomError("Zoom API request failed") from last_error
 
     def create_recurring_meeting(self, *, topic: str, occurrence: Occurrence, weekday: int, timezone_name: str, recurrence_end: date) -> dict[str, Any]:
+        """Create a weekly recurring meeting for one schedule."""
         payload = {
             "topic": topic[:200],
             "type": 8,
@@ -143,6 +171,7 @@ class ZoomClient:
         return self.request("POST", f"users/{settings.zoom_host_user_id}/meetings", json=payload)
 
     def update_meeting(self, meeting_id: str, *, topic: str, occurrence: Occurrence, weekday: int, timezone_name: str) -> dict[str, Any]:
+        """Update topic, time, duration and recurrence of a meeting."""
         payload = {
             "topic": topic[:200],
             "start_time": occurrence.start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -153,16 +182,26 @@ class ZoomClient:
         return self.request("PATCH", f"meetings/{meeting_id}", json=payload)
 
     def get_zak(self) -> str:
+        """Return the host's Zoom Access Key for starting a meeting."""
         payload = self.request("GET", f"users/{settings.zoom_host_user_id}/token", params={"type": "zak"})
         return str(payload["token"])
 
 
 @lru_cache(maxsize=1)
 def get_zoom_client() -> ZoomClient:
+    """Return the process-wide Zoom client."""
     return ZoomClient()
 
 
 def meeting_sdk_jwt(meeting_number: str, role: int) -> tuple[str, datetime]:
+    """Sign a Meeting SDK JWT for one meeting and role.
+
+    Role 1 is host and 0 is participant; the token expires one hour after
+    issue.
+
+    Raises:
+        ZoomNotConfigured: when Meeting SDK credentials are missing.
+    """
     sdk_key = settings.zoom_sdk_client_id or settings.zoom_sdk_key
     if not sdk_key or not settings.zoom_sdk_secret:
         raise ZoomNotConfigured("Meeting SDK credentials are not configured")

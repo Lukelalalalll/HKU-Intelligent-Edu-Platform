@@ -1,3 +1,9 @@
+"""Coze workflow provider for AI teaching video generation.
+
+The provider prefers the official ``cozepy`` SDK and falls back to the HTTP
+workflow API when the SDK is missing or lacks an endpoint.
+"""
+
 import json
 import time
 from typing import Any
@@ -11,6 +17,11 @@ from .schemas import VideoGenerationInput, VideoGenerationOutput, VideoProgress,
 
 
 class CozeProvider(VideoProvider):
+    """Generate videos through a Coze workflow.
+
+    Async workflow runs are polled to completion; streaming uses the workflow
+    SSE feed when the installed SDK exposes it.
+    """
     name = "coze"
 
     def __init__(self, config=settings, client: httpx.Client | None = None):
@@ -32,11 +43,13 @@ class CozeProvider(VideoProvider):
 
     @property
     def client(self) -> httpx.Client:
+        """Return a lazily created HTTP client for the fallback adapter."""
         if self._client is None:
             self._client = httpx.Client(base_url=self.config.coze_api_base_url, timeout=self.config.coze_timeout_seconds)
         return self._client
 
     def validate_config(self) -> None:
+        """Raise when the provider is disabled or under-configured."""
         if not self.config.coze_enabled:
             raise VideoProviderError("Coze provider 未启用")
         if not self.config.coze_api_token:
@@ -57,6 +70,11 @@ class CozeProvider(VideoProvider):
         }}
 
     def create_generation_job(self, request: VideoGenerationInput) -> str | None:
+        """Start an async workflow run and return its run id.
+
+        Raises:
+            VideoProviderError: when the workflow request is rejected.
+        """
         self.validate_config()
         try:
             run = self.coze.workflows.runs.create(
@@ -79,6 +97,13 @@ class CozeProvider(VideoProvider):
 
     @staticmethod
     def parse_json_content(content: Any) -> dict[str, Any]:
+        """Parse a workflow output payload into a JSON object.
+
+        Markdown fences and JSON-encoded strings are accepted.
+
+        Raises:
+            ValueError: when the content is not a JSON object.
+        """
         if isinstance(content, dict):
             return content
         if isinstance(content, (bytes, bytearray)):
@@ -97,6 +122,7 @@ class CozeProvider(VideoProvider):
         return value
 
     def normalize_event(self, event: Any) -> dict[str, Any]:
+        """Map one provider event onto the streaming event contract."""
         if isinstance(event, str):
             event = {"event": event}
         if not isinstance(event, dict):
@@ -158,6 +184,11 @@ class CozeProvider(VideoProvider):
             yield {"type": "complete", "output": output.model_dump()}
 
     def run_generation(self, request: VideoGenerationInput, provider_job_id: str | None = None) -> VideoGenerationOutput:
+        """Poll the run until it finishes and return normalized output.
+
+        Raises:
+            VideoProviderError: on timeout, provider failure or no run id.
+        """
         self.validate_config()
         run_id = provider_job_id or self.create_generation_job(request)
         if not run_id:
@@ -200,12 +231,14 @@ class CozeProvider(VideoProvider):
         return output
 
     def cancel_generation(self, provider_job_id: str) -> None:
+        """Cancel the workflow run; a 404 is treated as already gone."""
         self.validate_config()
         response = self.client.post(f"/v1/workflow/runs/{provider_job_id}/cancel", headers=self._headers())
         if response.status_code >= 400 and response.status_code != 404:
             raise VideoProviderError("Coze workflow 取消失败")
 
     def get_status(self, provider_job_id: str) -> VideoProgress:
+        """Return a coarse progress snapshot for one run."""
         response = self.client.get(f"/v1/workflow/runs/{provider_job_id}", headers=self._headers())
         if response.status_code >= 400:
             raise VideoProviderError("Coze workflow 状态查询失败")
@@ -215,5 +248,6 @@ class CozeProvider(VideoProvider):
         return VideoProgress(status=mapped, progress=100 if mapped == "completed" else 20, stage=status, provider_job_id=provider_job_id, error_message=body.get("error_message"))
 
     def health_check(self) -> dict[str, Any]:
+        """Report whether the provider is enabled and configured."""
         configured = bool(self.config.coze_enabled and self.config.coze_api_token and self.config.coze_workflow_id)
         return {"provider": self.name, "configured": configured, "workflow_id_configured": bool(self.config.coze_workflow_id)}

@@ -1,3 +1,5 @@
+"""Document mixin: page summaries, slide documents and design quality checks."""
+
 from .context import *  # noqa: F401,F403
 
 class _DocumentMixin:
@@ -23,6 +25,11 @@ class _DocumentMixin:
 
 
     def _visual_plan(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        """Place confirmed assets into layout slots on the 0-100 grid.
+
+        Only selected assets are used; the first asset becomes a full-bleed
+        background for cover and section pages.
+        """
         visual = dict(page.visual_plan_json or {})
         all_assets = [item for item in visual.get("asset_manifest", []) if isinstance(item, dict) and item.get("status") == "ready"]
         selected = visual.get("selected_asset_ids")
@@ -48,12 +55,22 @@ class _DocumentMixin:
 
 
     def _summary(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        """Generate the page summary from its source corpus.
+
+        Raises:
+            HTTPException: 409 when the page has no sources or citations.
+        """
         text = "\n\n".join(c.content_md for col in self.db.scalars(select(PptSourceCollection).where(PptSourceCollection.project_id == p.id, PptSourceCollection.page_id == page.id)) for d in col.documents for c in d.chunks)
         if not text and not page.citations_json: raise HTTPException(409, "当前页没有资料，无法生成 Summary")
         gateway = ProviderGateway(self.db, self.user.id); page.summary_md = gateway.text("根据给定资料生成有引用意识的教学 Summary，使用 Markdown，禁止编造事实。", {"title": page.title, "bullets": page.bullets_json, "sources": text or page.citations_json}); page.statuses_json = {**(page.statuses_json or {}), "summary": "ready"}; self.db.commit(); return {"summary_length": len(page.summary_md)}
 
 
     def _template_document(self, page: PptPage, theme: dict[str, Any], layout: dict[str, Any]) -> dict[str, Any]:
+        """Build the deterministic template document for one page.
+
+        Used when the model output is missing or fails the quality check, so
+        every page still has a renderable design.
+        """
         colors = theme.get("colors") or {}
         bullets = [str(item) for item in (page.bullets_json or [])[:6]]
         kind = layout.get("kind", "content")
@@ -87,6 +104,11 @@ class _DocumentMixin:
 
     @staticmethod
     def _document_quality_ok(document: dict[str, Any]) -> bool:
+        """Return False when a document is unrenderable or visually unsafe.
+
+        Checks empty element lists, out-of-canvas geometry, text overflow and
+        body text larger than the title.
+        """
         elements = document.get("elements") if isinstance(document, dict) else None
         if not isinstance(elements, list) or not elements:
             return False
@@ -111,6 +133,7 @@ class _DocumentMixin:
 
 
     def _slide_doc(self, p: PptProject, page: PptPage, mode: str, layout: dict[str, Any] | None = None, outline: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """Ask the model for one page document and normalize the reply."""
         gateway = ProviderGateway(self.db, self.user.id)
         selected_layout = layout or {"id": (page.document or {}).get("layout", "title-content"), "kind": "content"}
         raw = gateway.json("你是资深教学课件设计 Agent。只输出结构化 Slide JSON：{layout,theme,elements:[{type,x,y,w,h,text,items,src,font_size,font_weight,color,fill}],speaker_notes}。大纲只是页面职责，不是最终全文；必须优先使用 content_plan 扩写后的论点、案例和视觉建议。根据页面角色设计清晰层级：标题 30-44px、正文 18-24px、辅助文字 12-16px；封面/目录/章节/对比/流程/案例/总结使用匹配的视觉结构。所有坐标使用 0-100 百分比，留出安全边距，禁止严重重叠和文字堆叠。", {"mode": mode, "page": {"title": page.title, "section": page.section_title, "role": page.page_role, "bullets": page.bullets_json, "summary": page.summary_md, "content_plan": page.content_plan_json or {}, "visual_plan": page.visual_plan_json or {}}, "outline": outline or [], "layout": selected_layout, "theme": p.theme_config or {}})
@@ -118,6 +141,7 @@ class _DocumentMixin:
 
 
     def _apply_visual_plan(self, page: PptPage, document: dict[str, Any]) -> dict[str, Any]:
+        """Merge image slots into a document without duplicating assets."""
         result = dict(document or {})
         elements = [dict(item) for item in result.get("elements") or [] if isinstance(item, dict)]
         existing_asset_ids = {str(item.get("asset_id")) for item in elements if item.get("asset_id")}
@@ -160,6 +184,11 @@ class _DocumentMixin:
 
     @staticmethod
     def _normalize_document(raw: dict[str, Any], selected_layout: dict[str, Any], theme_config: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a model document to the v2 canvas contract.
+
+        Every element gets a stable id, clamped percentage geometry and a
+        z-index order before it is persisted.
+        """
         normalized = dict(raw or {}); normalized["version"] = 2; normalized["canvas"] = {"width": 1280, "height": 720}; normalized["elements"] = []
         normalized["layout"] = selected_layout["id"]; colors = (theme_config or {}).get("colors", {}); normalized["theme"] = {**colors, "background": colors.get("bg"), "tokens": (theme_config or {}).get("tokens", {}), "accessibility": (theme_config or {}).get("accessibility", {})}
         for index, item in enumerate(raw.get("elements") or []):
@@ -175,11 +204,21 @@ class _DocumentMixin:
 
 
     def _draft(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        """Generate the draft document for a page.
+
+        Raises:
+            HTTPException: 409 when the page has no summary yet.
+        """
         if not page.summary_md: raise HTTPException(409, "请先生成当前页 Summary")
         page.draft_document_json = self._slide_doc(p, page, "draft"); page.statuses_json = {**(page.statuses_json or {}), "draft": "ready"}; self.db.commit(); return {"page_id": page.id, "document": page.draft_document_json}
 
 
     def _design(self, p: PptProject, page: PptPage) -> dict[str, Any]:
+        """Generate the design document and append a document version.
+
+        Raises:
+            HTTPException: 409 when the page has no draft yet.
+        """
         if not page.draft_document_json: raise HTTPException(409, "请先生成当前页 Draft")
         page.design_document_json = self._slide_doc(p, page, "design"); page.document_revision += 1
         version_no = (self.db.scalar(select(PptDocumentVersion).where(PptDocumentVersion.page_id == page.id).order_by(PptDocumentVersion.version_no.desc())) or PptDocumentVersion(version_no=0)).version_no + 1
@@ -189,6 +228,7 @@ class _DocumentMixin:
 
 
     def _batch(self, p: PptProject, action: str) -> dict[str, Any]:
+        """Run one action across every page, collecting per-page failures."""
         mapping = {"project_batch_search": "page_search_run", "project_batch_visual": "page_visual_research", "project_batch_summary": "page_summary_generate", "project_batch_draft": "page_draft_generate", "project_batch_design": "page_design_generate"}; results = []
         for page in sorted(p.pages, key=lambda x: x.sort_order):
             try: results.append(self.run_action(p.id, page.id, mapping[action])["result"])
@@ -197,6 +237,11 @@ class _DocumentMixin:
 
 
     def upload_document(self, project_id: str, page_id: str | None, upload: UploadFile) -> dict[str, Any]:
+        """Store an uploaded source document in the project corpus.
+
+        Raises:
+            HTTPException: 415 when the file fails upload validation.
+        """
         p = self.project(project_id); page = self.page(project_id, page_id) if page_id else None
         content = upload.file.read()
         try:
@@ -211,6 +256,8 @@ class _DocumentMixin:
 
 
     def _chunk_text(self, text: str) -> list[str]:
+        """Split text with LangChain when installed, else by character stride.
+        """
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
             return RecursiveCharacterTextSplitter(chunk_size=1800, chunk_overlap=200).split_text(text) or [""]
@@ -219,6 +266,12 @@ class _DocumentMixin:
 
 
     def _extract_text(self, path: Path, content: bytes) -> str:
+        """Extract text per file type, returning a placeholder on soft failures.
+
+        Office, PDF and image extraction are best-effort so the upload itself
+        still succeeds; images fall back to a vision call when the provider
+        supports it.
+        """
         if path.suffix.lower() in {".txt", ".md", ".markdown", ".csv"}: return content.decode("utf-8", errors="ignore")
         if path.suffix.lower() == ".json":
             try: return json.dumps(json.loads(content.decode("utf-8", errors="ignore")), ensure_ascii=False, indent=2)

@@ -1,4 +1,9 @@
-"""Deprecated compatibility wrappers for the file-processing service."""
+"""Deprecated compatibility wrappers for the file-processing service.
+
+Deprecated:
+    Import from ``app.services.file_processing``; these aliases only keep the
+    pre-split import paths working.
+"""
 from .file_processing.validation import SUPPORTED_EXTENSIONS, validate_upload
 from .file_processing.repository import bind_document, ensure_document_for_asset, upload_asset, upload_asset_stream
 from .file_processing.orchestration import enqueue_job, process_job, recover_jobs

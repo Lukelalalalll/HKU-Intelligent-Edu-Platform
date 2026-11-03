@@ -1,9 +1,12 @@
+"""Editor domain facade: pages, documents, actions and previews."""
+
 from .services_base import PptServiceBase
 
 class EditorService(PptServiceBase):
     """Page, document, editor and assistant-facing operations."""
     def page(self, project_id, page_id): return self._app.page(project_id, page_id)
     def pages(self, project_id):
+        """List serialized pages in display order."""
         project = self._app.project(project_id)
         return [self._app.serialize_page(p) for p in sorted(project.pages, key=lambda x: x.sort_order)]
     def serialize_page(self, page): return self._app.serialize_page(page)

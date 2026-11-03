@@ -1,3 +1,5 @@
+"""Local video provider: card visuals, captions and an optional offline TTS."""
+
 import shutil
 import subprocess
 import shlex
@@ -11,24 +13,34 @@ from .base import VideoProvider, VideoProviderError
 from .schemas import VideoGenerationInput, VideoGenerationOutput, VideoProgress, VideoSceneData
 
 
+# Rendering is CPU and GPU heavy, so one render runs per process.
 _render_slots = BoundedSemaphore(1)
 
 
 class LocalProvider(VideoProvider):
+    """Render teaching videos locally without a remote provider."""
     name = "local"
 
     def __init__(self, config=settings):
         self.config = config
 
     def validate_config(self) -> None:
+        """Raise when the local provider is disabled."""
         if not self.config.local_video_enabled:
             raise VideoProviderError("Local video provider 未启用")
 
     def create_generation_job(self, request: VideoGenerationInput) -> str | None:
+        """Return None: local rendering has no provider-side job id."""
         self.validate_config()
         return None
 
     def run_generation(self, request: VideoGenerationInput, provider_job_id: str | None = None) -> VideoGenerationOutput:
+        """Build the scene list for local rendering.
+
+        Raises:
+            VideoProviderError: when the model directory is missing or an
+                avatar was requested without a CUDA GPU.
+        """
         self.validate_config()
         if self.config.local_video_model_dir and not Path(self.config.local_video_model_dir).is_dir():
             raise VideoProviderError("Local video model directory 不存在，请检查 LOCAL_VIDEO_MODEL_DIR")
@@ -38,19 +50,24 @@ class LocalProvider(VideoProvider):
         return VideoGenerationOutput(script=request.source_text or request.title, scenes=scenes, metadata={"renderer": "ffmpeg-card-mvp", "gpu_available": self._gpu_available()})
 
     def cancel_generation(self, provider_job_id: str) -> None:
+        """Local rendering is synchronous, so there is nothing to cancel."""
         return None
 
     def get_status(self, provider_job_id: str) -> VideoProgress:
+        """Report a fixed rendering snapshot for local jobs."""
         return VideoProgress(status="rendering", progress=50, stage="本地卡片渲染", provider_job_id=provider_job_id)
 
     def normalize_event(self, event: Any) -> dict[str, Any]:
+        """Pass through dict events and normalize everything else."""
         return event if isinstance(event, dict) else {"type": "status", "status": "rendering"}
 
     def health_check(self) -> dict[str, Any]:
+        """Report CUDA and ffmpeg availability."""
         return {"provider": self.name, "configured": bool(self.config.local_video_enabled), "cuda_available": self._gpu_available(), "ffmpeg_available": shutil.which("ffmpeg") is not None}
 
     @staticmethod
     def _gpu_available() -> bool:
+        """Return whether CUDA is usable; any import error means no GPU."""
         try:
             import torch
             return bool(torch.cuda.is_available())
@@ -58,6 +75,7 @@ class LocalProvider(VideoProvider):
             return False
 
     def render(self, output: VideoGenerationOutput, job_id: str) -> dict[str, str]:
+        """Render one job while holding the single process render slot."""
         _render_slots.acquire()
         try:
             return self._render_locked(output, job_id)
@@ -65,6 +83,7 @@ class LocalProvider(VideoProvider):
             _render_slots.release()
 
     def _render_locked(self, output: VideoGenerationOutput, job_id: str) -> dict[str, str]:
+        """Write script, captions and audio, then mux the video with ffmpeg."""
         root = self.config.video_storage_path / job_id
         root.mkdir(parents=True, exist_ok=True)
         script_path = root / "script.txt"

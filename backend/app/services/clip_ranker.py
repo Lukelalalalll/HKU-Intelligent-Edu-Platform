@@ -5,6 +5,11 @@ from typing import Any
 
 
 def rerank(assets: list[dict[str, Any]], text: str, model_name: str = "") -> list[dict[str, Any]]:
+    """Rerank assets by CLIP similarity when the model is configured.
+
+    Any missing dependency or failed inference returns the input order
+    unchanged, because keyword ranking is the supported fallback.
+    """
     if not model_name or len(assets) < 2:
         return assets
     try:

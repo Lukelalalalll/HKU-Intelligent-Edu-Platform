@@ -1,12 +1,16 @@
+"""Pydantic schemas for video generation requests, scenes and progress."""
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
+# Statuses a generation job may report back to the client.
 VideoStatus = Literal["queued", "preparing", "scripting", "generating_audio", "generating_visuals", "rendering", "completed", "failed", "canceled"]
 
 
 class VideoGenerationInput(BaseModel):
+    """Request payload derived from a project and its sources."""
     project_id: str
     title: str
     course_id: str | None = None
@@ -24,6 +28,7 @@ class VideoGenerationInput(BaseModel):
 
 
 class VideoSceneData(BaseModel):
+    """One scene of a generated video script."""
     id: str | None = None
     order: int = 0
     duration_seconds: int = 15
@@ -35,6 +40,7 @@ class VideoSceneData(BaseModel):
 
 
 class VideoGenerationOutput(BaseModel):
+    """Normalized provider output for one generated video."""
     script: str = ""
     scenes: list[VideoSceneData] = Field(default_factory=list)
     audio_url: str | None = None
@@ -46,6 +52,7 @@ class VideoGenerationOutput(BaseModel):
 
 
 class VideoProgress(BaseModel):
+    """Polling snapshot of a provider-side job."""
     status: VideoStatus = "queued"
     progress: int = Field(default=0, ge=0, le=100)
     stage: str = "queued"
@@ -56,6 +63,13 @@ class VideoProgress(BaseModel):
 
 
 def normalize_output(value: Any) -> VideoGenerationOutput:
+    """Coerce a provider payload into ``VideoGenerationOutput``.
+
+    Field aliases keep providers with slightly different keys compatible.
+
+    Raises:
+        ValueError: when the payload is not an object or a scene is not a dict.
+    """
     if isinstance(value, VideoGenerationOutput):
         return value
     if not isinstance(value, dict):

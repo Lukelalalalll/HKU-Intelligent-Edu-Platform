@@ -1,3 +1,9 @@
+"""Courseware RAG: material ingestion, course selection and grounded answers.
+
+Ingestion chunks course materials into ``CourseMaterialChunk`` rows; answers
+are generated from retrieved chunks only, so replies stay course-grounded.
+"""
+
 from __future__ import annotations
 
 import re
@@ -15,6 +21,7 @@ from app.services.file_retrieval import retrieve_chunks, context_text
 
 
 def _read_document(path: Path) -> str:
+    """Extract text from a supported file; failures return empty text."""
     suffix = path.suffix.lower()
     if suffix in {".txt", ".md", ".csv", ".json"}:
         return path.read_text(encoding="utf-8", errors="ignore")
@@ -50,12 +57,18 @@ def _read_document(path: Path) -> str:
     return ""
 
 def _chunks(text: str, size: int = 1200, overlap: int = 160):
+    """Split text into overlapping fixed-size chunks."""
     text = re.sub(r"\s+", " ", text).strip()
     if not text: return []
     step = max(1, size - overlap)
     return [text[i:i + size] for i in range(0, len(text), step)]
 
 def ingest_material(material_id: str) -> None:
+    """Index one course material into retrieval chunks.
+
+    A failed run records the error on the ingestion row instead of raising, so
+    the worker does not retry a deterministic parse failure.
+    """
     db = SessionLocal()
     try:
         material = db.scalar(select(CourseMaterial).where(CourseMaterial.id == material_id))
@@ -84,6 +97,7 @@ def ingest_material(material_id: str) -> None:
         db.close()
 
 def queue_ingestion(material_id: str):
+    """Enqueue the ingestion job for one material."""
     from app.jobs.manager import JobManager
     db = SessionLocal()
     try:
@@ -92,6 +106,12 @@ def queue_ingestion(material_id: str):
         db.close()
 
 def query_courses(db: Session, question: str, student_id: str, course_id: str | None = None):
+    """Pick the most likely enrolled course and rank its chunks.
+
+    Returns:
+        ``(selected_course, candidate_courses, ranked_chunks)``; the course is
+        None when the question is ambiguous across several courses.
+    """
     courses = db.scalars(select(Course).join(Enrollment).where(Enrollment.student_id == student_id)).all()
     if course_id:
         courses = [c for c in courses if c.id == course_id]
@@ -110,6 +130,11 @@ def query_courses(db: Session, question: str, student_id: str, course_id: str | 
     return selected, [], ranked
 
 def courseware_rag(db: Session, question: str, student_id: str, course_id: str | None = None):
+    """Answer a question from one course's indexed material.
+
+    Returns:
+        The legacy response envelope with citations and a confidence score.
+    """
     course, candidates, chunks = query_courses(db, question, student_id, course_id)
     if not course:
         return {"course_id": None, "course": None, "answer": "请先选择一门课程，我会基于该课程的课件为你讲解。", "citations": [], "confidence": 0.0, "needs_course_selection": bool(candidates), "candidate_courses": [{"id": c.id, "code": c.code, "name": c.name} for _, c in candidates]}
@@ -131,6 +156,11 @@ def courseware_rag(db: Session, question: str, student_id: str, course_id: str |
 
 
 def unified_courseware_rag(db: Session, question: str, student_id: str, course_id: str | None = None, conversation_id: str | None = None, attachment_ids: list[str] | None = None):
+    """Answer a question from file-processing evidence.
+
+    Evidence covers course material, submissions and conversation attachments;
+    citations point at the artifact with the page anchor.
+    """
     evidence = retrieve_chunks(db, question, user_id=student_id, course_id=course_id, conversation_id=conversation_id, attachment_ids=attachment_ids, top_k=8, include_images=True)
     course = db.get(Course, course_id) if course_id else None
     if not evidence:

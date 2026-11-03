@@ -1,3 +1,5 @@
+"""Concrete parser implementations and the registry factory."""
+
 from .base import DocumentParser, ParseResult, ParserRegistry
 from .builtin import BuiltinParser, default_registry
 from .image import ImageParser

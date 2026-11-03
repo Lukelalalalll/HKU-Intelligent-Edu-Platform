@@ -15,12 +15,14 @@ from app.services.ppt_theme import get_theme, list_layouts
 
 
 def _tool(name: str, description: str, properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    """Build one function-calling tool schema."""
     schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required:
         schema["required"] = required
     return {"type": "function", "function": {"name": name, "description": description, "parameters": schema}}
 
 
+# Tool catalog exposed to the model; names must match ``execute``.
 TOOLS: list[dict[str, Any]] = [
     _tool("getPresentationOutline", "读取当前课件的页面顺序、标题和要点。", {}),
     _tool("getSlideAtIndex", "读取指定页的完整内容。slide_index 从 0 开始。", {"slide_index": {"type": "integer"}}, ["slide_index"]),
@@ -47,11 +49,14 @@ saveSlide 的 content 必须保留未修改元素并符合 canvas 1280x720；保
 
 
 class PptEditAgent:
+    """Run the tool-calling loop for the preview/editor assistant."""
     def __init__(self, service: PptApplicationService):
+        """Bind the agent to one service and its provider gateway."""
         self.service = service
         self.gateway = ProviderGateway(service.db, service.user.id)
 
     def _context(self, project_id: str, page_id: str | None) -> dict[str, Any]:
+        """Return the live deck context injected into the system prompt."""
         project = self.service.project(project_id)
         pages = sorted(project.pages, key=lambda item: item.sort_order)
         current = self.service.page(project_id, page_id) if page_id else None
@@ -62,6 +67,11 @@ class PptEditAgent:
         }
 
     def _page_at(self, project_id: str, index: int):
+        """Return the page at a zero-based index.
+
+        Raises:
+            HTTPException: 400 when the index is out of range.
+        """
         pages = sorted(self.service.project(project_id).pages, key=lambda item: item.sort_order)
         if index < 0 or index >= len(pages):
             raise HTTPException(400, f"页面索引超出范围：{index}")
@@ -84,6 +94,12 @@ class PptEditAgent:
         return {"slide_index": 0, "background_color": color if scope == "background" else "", "title_color": color if scope == "title" else "", "body_color": color if scope == "body" else "", "accent_color": color if scope == "accent" else "", "scope": scope}
 
     def execute(self, project_id: str, page_id: str | None, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Execute one tool call and return its result payload.
+
+        Raises:
+            HTTPException: 400 when the arguments are invalid or the tool is
+                unknown.
+        """
         if name == "getPresentationOutline":
             return {"ok": True, "pages": self._context(project_id, page_id)["pages"]}
         if name == "getSlideAtIndex":
@@ -173,6 +189,11 @@ class PptEditAgent:
         raise HTTPException(400, f"不支持的 Agent 工具：{name}")
 
     def run(self, project_id: str, page_id: str | None, content: str, history: list[dict[str, Any]] | None = None) -> Iterator[dict[str, Any]]:
+        """Stream trace and chunk events for one assistant turn.
+
+        An unambiguous colour request is handled deterministically before the
+        model runs; otherwise the loop executes up to eight tool rounds.
+        """
         direct_color = self._direct_color_args(content, page_id)
         if direct_color:
             if page_id:

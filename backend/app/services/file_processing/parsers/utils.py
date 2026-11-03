@@ -1,3 +1,10 @@
+"""Low-level extraction helpers shared by the concrete parsers.
+
+Everything here returns the normalized page/block structure consumed by
+``_pages_to_chunks``; optional third-party parsers are imported lazily so
+the API can start without them.
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,10 +20,16 @@ from typing import Any
 from app.core.config import settings
 
 def _clean_text(value: str) -> str:
+    """Join hyphenated line breaks and collapse soft wraps."""
     value = re.sub(r"-\s*\n\s*", "", str(value or ""))
     return re.sub(r"(?<!\n)[ \t]*\n[ \t]*", " ", value).strip()
 
 def _block(page: int, index: int, typ: str, text: str, source: str, confidence: float = .9, bbox: list[float] | None = None, **meta: Any) -> dict:
+    """Build the normalized block dict used by every parser.
+
+    ``markdown`` is derived from the block type so formulas, code and headings
+    keep a renderable representation.
+    """
     value = text if typ in {"code", "formula"} else _clean_text(text)
     markdown = value
     if typ == "formula": markdown = f"$$\n{value.strip('$ ').strip()}\n$$" if value.strip() else ""
@@ -27,6 +40,10 @@ def _block(page: int, index: int, typ: str, text: str, source: str, confidence: 
 
 
 def _native_pdf(path: Path) -> list[dict]:
+    """Extract PDF text and image blocks with PyMuPDF.
+
+    Falls back to pypdf when PyMuPDF is unavailable.
+    """
     pages: list[dict] = []
     try:
         import fitz  # type: ignore
@@ -61,6 +78,7 @@ def _native_pdf(path: Path) -> list[dict]:
 
 
 def _mineru_pdf(path: Path, root: Path) -> list[dict]:
+    """Run the MinerU CLI and convert its middle JSON into pages."""
     executable = settings.file_processing_mineru_command
     resolved = shutil.which(executable) or (str(Path(sys.executable).with_name("mineru.exe")) if Path(sys.executable).with_name("mineru.exe").exists() else None)
     if not resolved:
@@ -95,6 +113,7 @@ def _mineru_pdf(path: Path, root: Path) -> list[dict]:
 
 
 def _office_pages(path: Path) -> list[dict]:
+    """Extract pages from PPTX, DOCX, XLSX/XLS or plain text."""
     ext = path.suffix.lower()
     pages: list[dict] = []
     if ext == ".pptx":
@@ -146,6 +165,11 @@ def _office_fallback(path: Path) -> list[dict]:
 
 
 def _pages_to_chunks(pages: list[dict], filename: str) -> list[dict]:
+    """Flatten page blocks into retrieval chunks.
+
+    The running ``section`` follows the last heading so each chunk keeps the
+    outline context it appeared under.
+    """
     chunks: list[dict] = []
     section = ""
     for page in pages:

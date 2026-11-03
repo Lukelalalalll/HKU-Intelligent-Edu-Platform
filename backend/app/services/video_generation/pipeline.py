@@ -1,3 +1,10 @@
+"""Video generation pipeline: provider selection and job execution.
+
+Job progress lives on ``VideoGenerationJob``; this runner advances the stage,
+writes scene rows, stores rendered assets and leaves provider-specific work
+to the provider implementations.
+"""
+
 from datetime import datetime, timezone
 import os
 from typing import Any
@@ -14,6 +21,11 @@ from .schemas import VideoGenerationInput
 
 
 def get_provider(name: str):
+    """Return the provider implementation for a job's provider name.
+
+    Raises:
+        VideoProviderError: for an unknown provider name.
+    """
     if name == "coze":
         return CozeProvider()
     if name == "local":
@@ -22,6 +34,15 @@ def get_provider(name: str):
 
 
 def run_video_job(job_id: str) -> dict[str, Any]:
+    """Run one video job to a terminal state.
+
+    The runner creates scene rows, stores rendered or provider-hosted assets and
+    records the result.  A cancellation observed mid-run stops the provider job.
+
+    Raises:
+        VideoProviderError: when the job, project or render fails; the row is
+            marked failed before the error propagates.
+    """
     from app.db.session import SessionLocal
     db = SessionLocal()
     try:

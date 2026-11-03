@@ -1,7 +1,10 @@
+"""Requirements mixin: interview turns, brief, outline and layout assignment."""
+
 from .context import *  # noqa: F401,F403
 
 class _RequirementsMixin:
     def requirements(self, project_id: str) -> dict[str, Any]:
+        """Return the interview state: answers, question and readiness."""
         p = self.project(project_id)
         req = self.db.scalar(select(PptRequirement).where(PptRequirement.project_id == p.id))
         answers = req.answers_json if req else {}
@@ -9,6 +12,7 @@ class _RequirementsMixin:
 
 
     def patch_requirements(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Merge explicit answer edits and the page-count target."""
         p = self.project(project_id); req = self.db.scalar(select(PptRequirement).where(PptRequirement.project_id == p.id))
         if not req:
             req = PptRequirement(project_id=p.id); self.db.add(req)
@@ -18,6 +22,7 @@ class _RequirementsMixin:
 
 
     def generate_requirements(self, project_id: str) -> dict[str, Any]:
+        """Ask the model for page-count options and interview questions."""
         p = self.project(project_id); req = self.db.scalar(select(PptRequirement).where(PptRequirement.project_id == p.id))
         gateway = ProviderGateway(self.db, self.user.id)
         data = gateway.json("你是课程课件需求分析师。只输出 JSON：{page_count_options:[{label,page_count,reason}],questions:[{code,label,options:[string]}]}。问题必须帮助教师明确受众、课堂时长和深度。", {"request": p.request_text})
@@ -25,6 +30,12 @@ class _RequirementsMixin:
 
 
     def _source_context(self, p: PptProject) -> list[dict[str, Any]]:
+        """Return the project corpus as prompt context.
+
+        Processed document chunks win; the legacy source-collection path is
+        cached by a content fingerprint and lock-guarded because generation runs
+        on worker threads.
+        """
         processed = self.db.scalars(
             select(FileProcessingChunk)
             .join(FileProcessingDocument, FileProcessingDocument.id == FileProcessingChunk.document_id)
@@ -59,12 +70,14 @@ class _RequirementsMixin:
 
 
     def list_sources(self, project_id: str) -> list[dict[str, Any]]:
+        """List the project's source documents."""
         p = self.project(project_id)
         rows = self.db.scalars(select(PptSourceDocument).join(PptSourceCollection).where(PptSourceCollection.project_id == p.id).order_by(PptSourceDocument.id.asc())).all()
         return [{"id": x.id, "title": x.title, "source_type": x.source_type, "metadata": x.metadata_json or {}, "collection_id": x.collection_id} for x in rows]
 
 
     def _requirement_input(self, project_id: str, content: str | None, option_id: str | None, option_label: str | None, bootstrap: bool):
+        """Load the project, requirement row, answers and recent transcript."""
         p = self.project(project_id)
         req = self.db.scalar(select(PptRequirement).where(PptRequirement.project_id == p.id))
         if not req:
@@ -79,6 +92,11 @@ class _RequirementsMixin:
 
 
     def _apply_requirement_data(self, p: PptProject, req: PptRequirement, answers: dict[str, Any], data: dict[str, Any], fallback: dict[str, Any], attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """Persist one interview turn and return the assistant reply.
+
+        The model reply is merged into the stored answers; the static fallback
+        keeps the interview usable when the provider is unavailable.
+        """
         patch = data.get("answers_patch") if isinstance(data.get("answers_patch"), dict) else {}
         answers.update({str(k): v for k, v in patch.items() if v not in (None, "")})
         for key in ("page_count_target",):
@@ -104,6 +122,11 @@ class _RequirementsMixin:
 
 
     def requirement_chat(self, project_id: str, content: str | None = None, option_id: str | None = None, option_label: str | None = None, bootstrap: bool = False) -> dict[str, Any]:
+        """Run one interview turn and return the assistant reply.
+
+        Provider failures fall back to the static question set instead of
+        failing the request.
+        """
         p, req, answers, transcript = self._requirement_input(project_id, content, option_id, option_label, bootstrap)
         prompt = self._requirement_prompt()
         fallback = self._requirement_fallback()
@@ -118,6 +141,7 @@ class _RequirementsMixin:
 
     @staticmethod
     def _requirement_prompt() -> str:
+        """Return the interview system prompt."""
         return """你是 PPT 需求访谈 Agent。根据项目描述、资料和对话历史，逐轮帮助教师明确课件需求。只输出 JSON：
     {"assistant_markdown":"...","brief_summary":"用教师口吻总结当前课件需求（1-3句）","question":{"code":"audience|duration|goals|slide_count|other","label":"...","options":["..."]}|null,"answers_patch":{},"missing_fields":["..."],"ready_to_outline":false,"suggested_additions":["..."],"page_count_target":null}
     每轮最多 6 个选项；选项必须是短文本。至少确认受众、教学目标、课堂时长和页数/节奏，不要询问视觉风格，视觉主题由后续步骤人工选择。信息足够时 ready_to_outline=true，并明确告诉教师可以点击生成大纲，但仍给出可补充内容。"""
@@ -125,10 +149,16 @@ class _RequirementsMixin:
 
     @staticmethod
     def _requirement_fallback() -> dict[str, Any]:
+        """Return the static reply used when the model fails."""
         return {"assistant_markdown": "为了做出合适的大纲，还需要确认教学目标和课件节奏。你最希望学生学会什么？", "brief_summary": "正在梳理课件主题、受众与教学节奏。", "question": {"code": "goals", "label": "这套课件最重要的教学目标是什么？", "options": ["理解核心概念", "掌握实践方法", "完成课堂讨论", "准备考试或汇报"]}, "answers_patch": {}, "missing_fields": ["goals"], "ready_to_outline": False, "suggested_additions": [], "page_count_target": None}
 
 
     def requirement_chat_stream(self, project_id: str, content: str | None = None, option_id: str | None = None, option_label: str | None = None, bootstrap: bool = False):
+        """Yield interview chunks, then the applied final result.
+
+        A provider failure still yields one ``complete`` event built from the
+        fallback reply, so an SSE client always terminates with a result.
+        """
         p, req, answers, transcript = self._requirement_input(project_id, content, option_id, option_label, bootstrap)
         prompt, fallback = self._requirement_prompt(), self._requirement_fallback()
         sources = self._source_context(p)
@@ -145,6 +175,12 @@ class _RequirementsMixin:
 
 
     def route_message(self, project_id: str, content: str, page_id: str | None = None, option_id: str | None = None, option_label: str | None = None) -> dict[str, Any]:
+        """Route one workspace message to an assistant action.
+
+        Without a page the message continues the requirements interview; with a
+        page the router model picks a page action, which is executed
+        immediately.
+        """
         p = self.project(project_id)
         if not page_id:
             return self.requirement_chat(project_id, content, option_id, option_label)
@@ -174,6 +210,15 @@ class _RequirementsMixin:
 
 
     def generate_outline(self, project_id: str, page_count_target: int, _legacy_style: str | None = None) -> dict[str, Any]:
+        """Generate the outline and replace the project's pages.
+
+        A pending ``outline_confirm`` checkpoint gates the next stage.
+
+        Raises:
+            HTTPException: 409 while the interview is unfinished, 502 when the
+                model
+            returns no usable outline.
+        """
         p = self.project(project_id)
         req = self.db.scalar(select(PptRequirement).where(PptRequirement.project_id == p.id))
         if req and req.status != "ready" and p.current_stage == "init":
@@ -201,6 +246,11 @@ class _RequirementsMixin:
 
 
     def select_theme(self, project_id: str, theme_id: str) -> dict[str, Any]:
+        """Select a normalized theme and invalidate generated artifacts.
+
+        Layout assignments, document versions and per-page draft/design flags
+        are reset so one deck never mixes two themes.
+        """
         p = self.project(project_id)
         from app.services.ppt_theme import get_theme
         theme = validate_theme_pack(get_theme(theme_id))
@@ -221,6 +271,7 @@ class _RequirementsMixin:
 
 
     def assign_layouts(self, project_id: str, assignments: dict[str, str] | None = None, mode: str = "manual") -> dict[str, Any]:
+        """Assign layout ids manually or round-robin when ``mode`` is auto."""
         p = self.project(project_id)
         from app.services.ppt_theme import list_layouts
         layouts = list_layouts(p.theme_id or "light-academic")
@@ -241,6 +292,7 @@ class _RequirementsMixin:
 
 
     def serialize_generation(job: PptGenerationJob) -> dict[str, Any]:
+        """Serialize one generation job for the API."""
         return {
             "id": job.id, "project_id": job.project_id, "status": job.status,
             "stage": job.stage, "total_pages": job.total_pages,

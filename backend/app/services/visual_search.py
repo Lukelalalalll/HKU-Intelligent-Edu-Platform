@@ -5,11 +5,18 @@ import hashlib
 import re
 from typing import Any, Iterable
 
+# Query terms dropped from keyword extraction.
 STOPWORDS = {"the", "and", "for", "with", "from", "this", "that", "page", "slide", "的", "和", "与", "及", "为", "课程", "页面"}
+# Domain synonyms expanded into additional search terms.
 SYNONYMS = {"可持续": "sustainable sustainability", "生态": "ecology ecosystem", "人工智能": "ai artificial intelligence", "教学": "education teaching", "数据": "data analytics"}
 
 
 def extract_keywords(section: str, title: str, bullets: Iterable[str] = (), role: str = "") -> list[str]:
+    """Extract deduped search terms from a page outline.
+
+    ASCII tokens of three or more characters and CJK runs of two or more are
+    kept, capped at 24 terms and expanded with the synonym table.
+    """
     text = " ".join([section or "", title or "", *[str(x) for x in bullets], role or ""]).lower()
     tokens = re.findall(r"[a-z][a-z0-9]{2,}|[\u4e00-\u9fff]{2,}", text)
     output: list[str] = []
@@ -23,6 +30,7 @@ def extract_keywords(section: str, title: str, bullets: Iterable[str] = (), role
 
 
 def query_text(section: str, title: str, bullets: Iterable[str] = (), role: str = "") -> str:
+    """Build the compact query string used for image search."""
     words = extract_keywords(section, title, bullets, role)
     return " ".join(words[:10])
 
@@ -48,4 +56,9 @@ def rank_candidates(candidates: list[dict[str, Any]], keywords: list[str], limit
 
 
 def stable_asset_id(url: str) -> str:
+    """Return a stable asset id derived from the image URL.
+
+    The same URL always maps to the same id, so retries keep asset paths stable
+    for the client.
+    """
     return "asset-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:20]

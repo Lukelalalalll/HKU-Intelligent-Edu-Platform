@@ -1,3 +1,5 @@
+"""Streaming upload repository helpers shared by the HTTP layer."""
+
 from pathlib import Path
 from typing import BinaryIO
 from sqlalchemy import select
@@ -9,6 +11,11 @@ from app.services.file_processing.validation import validate_upload
 from app.services.file_processing.orchestration import bind_document, ensure_document_for_asset, upload_asset, enqueue_job
 
 def upload_asset_stream(db: Session, *, uploader_id: str, filename: str, mime_type: str | None, file: BinaryIO, target_type: str | None = None, target_id: str | None = None, owner_id: str | None = None, course_id: str | None = None, visibility: str = "owner", metadata: dict | None = None):
+    """Stream an upload to storage and return asset, document and job.
+
+    The temporary file is removed when the upload is a duplicate or fails
+    validation, so abandoned streams never accumulate.
+    """
     name, ext = validate_upload(filename, mime_type, 1)
     key, size, digest = stream_to_storage(file, name)
     try:

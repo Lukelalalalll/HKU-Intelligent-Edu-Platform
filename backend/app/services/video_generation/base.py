@@ -1,3 +1,5 @@
+"""Video provider contract shared by the Coze and local implementations."""
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any
@@ -14,6 +16,12 @@ class VideoProviderError(RuntimeError):
 
 
 class VideoProvider(ABC):
+    """Abstract provider contract for one video backend.
+
+    ``run_generation`` is the required polling entrypoint.
+    ``stream_generation`` has a default implementation and may be overridden by
+    providers with native streaming.
+    """
     name: str
 
     @abstractmethod
@@ -38,6 +46,7 @@ class VideoProvider(ABC):
     def health_check(self) -> dict[str, Any]: ...
 
     def stream_generation(self, request: VideoGenerationInput) -> Iterable[dict[str, Any]]:
+        """Yield a status update, then one complete event with the output."""
         yield {"type": "status", "status": "preparing", "progress": 5, "stage": "准备生成"}
         output = self.run_generation(request)
         yield {"type": "complete", "output": output.model_dump()}

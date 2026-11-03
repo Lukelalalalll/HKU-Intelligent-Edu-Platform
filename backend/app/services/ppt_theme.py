@@ -1,3 +1,5 @@
+"""Theme packs, layout catalog and SVG slide rendering."""
+
 from __future__ import annotations
 
 import html
@@ -5,6 +7,7 @@ import re
 from typing import Any
 
 
+# Built-in theme packs; a pack may extend a base theme by id.
 THEMES: list[dict[str, Any]] = [
     {"id": "business", "name": "Business", "description": "Classic business deck with strong hierarchy.", "family": "Business", "colors": {"bg": "#102a43", "surface": "#1f4e79", "title": "#ffffff", "body": "#d9eaf7", "accent": "#62b0e8"}, "tokens": {"font_family": "Aptos", "space": 4, "radius": 12, "shadow": "0 10px 24px rgba(15,23,42,.16)"}},
     {"id": "business-clean", "name": "Business Clean", "description": "Balanced spacing and practical layout for lectures.", "family": "Business", "colors": {"bg": "#f5f8fb", "surface": "#ffffff", "title": "#17324d", "body": "#486581", "accent": "#2f80ed"}, "tokens": {"font_family": "Aptos", "space": 5, "radius": 14, "shadow": "0 8px 20px rgba(23,50,77,.10)"}},
@@ -16,6 +19,7 @@ THEMES: list[dict[str, Any]] = [
     {"id": "light-academic", "name": "Light Academic", "description": "Paper-like look for dense conceptual material.", "family": "Light", "colors": {"bg": "#fbfefc", "surface": "#eaf7ef", "title": "#075b42", "body": "#1d3e32", "accent": "#087250"}, "tokens": {"font_family": "Aptos", "space": 5, "radius": 12, "shadow": "0 8px 18px rgba(8,114,80,.10)"}},
 ]
 
+# Layout catalog shared by every theme.
 LAYOUTS = [
     {"id": "title-content", "name": "Title and Content", "kind": "content", "capacity": "medium", "roles": ["concept", "example", "summary"]},
     {"id": "two-column", "name": "Two Column", "kind": "columns", "capacity": "high", "roles": ["compare", "process", "concept"]},
@@ -28,6 +32,11 @@ LAYOUTS = [
 
 
 def get_theme(theme_id: str) -> dict[str, Any]:
+    """Return a theme pack merged over its base theme.
+
+    Accessibility contrast values are computed on the merged colours; an
+    unknown id resolves to the default light academic theme.
+    """
     key = (theme_id or "light-academic").strip().lower()
     selected = next((dict(t) for t in THEMES if t["id"] == key), dict(THEMES[-1]))
     base = selected.get("base_theme")
@@ -44,10 +53,12 @@ def get_theme(theme_id: str) -> dict[str, Any]:
 
 
 def list_themes() -> list[dict[str, Any]]:
+    """List the built-in themes with their layout count."""
     return [dict(get_theme(theme["id"]), layout_count=len(LAYOUTS)) for theme in THEMES]
 
 
 def list_layouts(theme_id: str) -> list[dict[str, Any]]:
+    """List the layouts available to a theme."""
     get_theme(theme_id)
     return [dict(layout) for layout in LAYOUTS]
 
@@ -71,11 +82,13 @@ def _luminance(value: Any) -> float:
 
 
 def contrast_ratio(first: Any, second: Any) -> float:
+    """Return the WCAG contrast ratio between two colours."""
     a, b = _luminance(first), _luminance(second)
     return (max(a, b) + 0.05) / (min(a, b) + 0.05)
 
 
 def _accessibility(colors: dict[str, Any]) -> dict[str, Any]:
+    """Compute title and body contrast ratios against the background."""
     bg = colors.get("bg", "#ffffff")
     return {"title_ratio": round(contrast_ratio(colors.get("title"), bg), 2), "body_ratio": round(contrast_ratio(colors.get("body"), bg), 2), "passes": contrast_ratio(colors.get("title"), bg) >= 3 and contrast_ratio(colors.get("body"), bg) >= 3}
 
@@ -98,6 +111,7 @@ def _safe(value: Any) -> str:
 
 
 def _svg_text(element: dict[str, Any], colors: dict[str, str]) -> str:
+    """Render one text element with character-level wrapping."""
     x = float(element.get("x", 0)) * 12.8
     y = float(element.get("y", 0)) * 7.2
     width = max(24.0, float(element.get("w", 80)) * 12.8)
@@ -117,6 +131,7 @@ def _svg_text(element: dict[str, Any], colors: dict[str, str]) -> str:
     return f'<text x="{anchor_x:.1f}" y="{y:.1f}" text-anchor="{anchor}" style="font:{weight} {size:.1f}px Arial;fill:{_safe(color)};opacity:{float(element.get("opacity", 1))}">{spans}</text>'
 
 
+# Element types rendered as shapes instead of text.
 _SVG_VISUAL_TYPES = {
     "shape", "rect", "rectangle", "rounded-rectangle", "rounded_rectangle",
     "roundrect", "card", "panel", "box", "bar", "divider", "line", "rule",
@@ -125,6 +140,7 @@ _SVG_VISUAL_TYPES = {
 
 
 def _svg_visual(element: dict[str, Any], colors: dict[str, str]) -> bool:
+    """Return whether an element should render as a shape."""
     kind = str(element.get("type") or "").strip().lower().replace(" ", "-")
     if kind in _SVG_VISUAL_TYPES:
         return True
@@ -132,6 +148,7 @@ def _svg_visual(element: dict[str, Any], colors: dict[str, str]) -> bool:
 
 
 def _svg_shape(element: dict[str, Any], colors: dict[str, str]) -> str:
+    """Render one shape element as SVG."""
     kind = str(element.get("type") or "shape").strip().lower().replace(" ", "-")
     shape_hint = str(element.get("shape") or "").strip().lower().replace("_", "-")
     x, y = float(element.get("x", 0)) * 12.8, float(element.get("y", 0)) * 7.2
@@ -149,6 +166,11 @@ def _svg_shape(element: dict[str, Any], colors: dict[str, str]) -> str:
 
 
 def render_slide_svg(page: Any, theme: dict[str, Any], layout: dict[str, Any] | None = None) -> str:
+    """Render a page as a 1280x720 SVG.
+
+    Element coordinates are percentages of the logical 1280x720 canvas; a saved
+    page document may override the deck theme for that page.
+    """
     base_colors = dict(theme.get("colors") or THEMES[-1]["colors"])
     title = _safe(page.title)
     bullets = [str(x) for x in (page.bullets_json or [])[:6]]
@@ -200,4 +222,5 @@ def render_slide_svg(page: Any, theme: dict[str, Any], layout: dict[str, Any] | 
 
 
 def preview_filename(project_id: str, page_id: str) -> str:
+    """Return the preview SVG URL for one page."""
     return f"/api/ppt/projects/{project_id}/pages/{page_id}/preview.svg"

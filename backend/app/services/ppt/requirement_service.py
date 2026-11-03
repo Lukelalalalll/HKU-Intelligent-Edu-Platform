@@ -1,3 +1,5 @@
+"""Requirement domain facade: interview, outline, messages and checkpoints."""
+
 from .services_base import PptServiceBase
 
 class RequirementService(PptServiceBase):

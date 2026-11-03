@@ -1,12 +1,21 @@
+"""PDF parser preferring MinerU with local extraction fallbacks."""
+
 from pathlib import Path
 from .base import ParseResult
 from .utils import _mineru_pdf, _native_pdf
 
 class PdfParser:
+    """Parse PDFs with MinerU and fall back to local extractors."""
     name = "pdf"
     def supports(self, extension: str, mime_type: str | None = None) -> bool:
+        """Accept the ``.pdf`` extension."""
         return extension.lower() == ".pdf"
     def parse(self, source: Path, output_dir: Path) -> ParseResult:
+        """Run MinerU, falling back to native PDF extraction on failure.
+
+        Raises:
+            RuntimeError: when both MinerU and the local fallbacks fail.
+        """
         try:
             return ParseResult(_mineru_pdf(source, output_dir), "mineru", "1")
         except Exception as exc:

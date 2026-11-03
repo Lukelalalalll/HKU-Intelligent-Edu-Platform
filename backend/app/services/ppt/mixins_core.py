@@ -1,7 +1,14 @@
+"""Core PPT mixin: project/page lookup, serialization and document history.
+
+Authorization is enforced here by filtering on ``owner_id``; the other
+mixins rely on ``project`` and ``page`` instead of querying directly.
+"""
+
 from .context import *  # noqa: F401,F403
 
 class _CoreMixin:
     def project(self, project_id: str) -> PptProject:
+        """Load a project owned by the caller, or raise 404."""
         item = self.db.scalar(select(PptProject).where(PptProject.id == project_id, PptProject.owner_id == self.user.id))
         if not item:
             raise HTTPException(404, "PPT 项目不存在")
@@ -9,6 +16,7 @@ class _CoreMixin:
 
 
     def page(self, project_id: str, page_id: str) -> PptPage:
+        """Load a page of a caller-owned project, or raise 404."""
         item = self.db.scalar(select(PptPage).where(PptPage.id == page_id, PptPage.project_id == project_id))
         if not item or item.project.owner_id != self.user.id:
             raise HTTPException(404, "页面不存在")
@@ -16,6 +24,7 @@ class _CoreMixin:
 
 
     def serialize_project(self, p: PptProject) -> dict[str, Any]:
+        """Serialize a project with its merged theme and cover preview."""
         pages = sorted(p.pages, key=lambda item: item.sort_order)
         if p.theme_id:
             base_theme = get_theme(p.theme_id)
@@ -26,6 +35,11 @@ class _CoreMixin:
 
 
     def delete_project(self, project_id: str) -> None:
+        """Delete a project and its stored artifacts.
+
+        The row is committed before the storage tree is removed, so a failed
+        unlink cannot roll back the deletion.
+        """
         project = self.project(project_id)
         project_root = settings.ppt_storage_path / project.id
         export_path = settings.ppt_storage_path / f"{project.id}.pptx"
@@ -38,6 +52,11 @@ class _CoreMixin:
 
 
     def serialize_page(self, p: PptPage) -> dict[str, Any]:
+        """Serialize a page, upgrading older documents to the v3 canvas.
+
+        Coordinates live in a 1280x720 logical space; clients apply the device
+        pixel ratio themselves when rendering.
+        """
         statuses = dict(p.statuses_json or {})
         document = p.design_document_json or p.draft_document_json
         if isinstance(document, dict):
@@ -49,10 +68,12 @@ class _CoreMixin:
 
 
     def list_projects(self) -> list[dict[str, Any]]:
+        """List the caller's projects, most recently updated first."""
         return [self.serialize_project(p) for p in self.db.scalars(select(PptProject).where(PptProject.owner_id == self.user.id).order_by(PptProject.updated_at.desc()))]
 
 
     def create_project(self, title: str, request_text: str, course_id: str | None = None) -> dict[str, Any]:
+        """Create a project with its requirement row and opening messages."""
         p = PptProject(owner_id=self.user.id, title=title.strip() or "未命名课件", request_text=request_text.strip(), course_id=course_id)
         self.db.add(p); self.db.flush()
         self.db.add(PptRequirement(project_id=p.id))
@@ -68,6 +89,7 @@ class _CoreMixin:
 
 
     def list_messages(self, project_id: str, page_id: str | None = None) -> list[dict[str, Any]]:
+        """Return the last 100 messages of a project, oldest first."""
         p = self.project(project_id)
         query = select(PptMessage).where(PptMessage.project_id == p.id)
         if page_id is not None: query = query.where(PptMessage.page_id == page_id)
@@ -77,17 +99,24 @@ class _CoreMixin:
 
 
     def list_checkpoints(self, project_id: str) -> list[dict[str, Any]]:
+        """List workflow checkpoints, newest first."""
         p = self.project(project_id)
         rows = self.db.scalars(select(PptCheckpoint).where(PptCheckpoint.project_id == p.id).order_by(PptCheckpoint.created_at.desc())).all()
         return [{"id": x.id, "checkpoint_code": x.checkpoint_code, "stage": x.stage, "status": x.status, "summary_md": x.summary_md, "payload": x.payload_json or {}, "created_at": x.created_at.isoformat()} for x in rows]
 
 
     def _message(self, p: PptProject, role: str, content: str, page_id: str | None = None, payload: dict | None = None) -> PptMessage:
+        """Append a message row; the caller commits."""
         item = PptMessage(project_id=p.id, page_id=page_id, role=role, stage=p.current_stage, scope_type="page" if page_id else "project", content_md=content, structured_payload_json=payload or {})
         self.db.add(item); self.db.flush(); return item
 
 
     def confirm_checkpoint(self, project_id: str, code: str, note: str | None = None) -> dict[str, Any]:
+        """Confirm a pending checkpoint and advance the stage.
+
+        Raises:
+            HTTPException: 404 when the checkpoint is missing or handled.
+        """
         p = self.project(project_id)
         checkpoint = self.db.scalar(select(PptCheckpoint).where(PptCheckpoint.project_id == p.id, PptCheckpoint.checkpoint_code == code, PptCheckpoint.status == "pending").order_by(PptCheckpoint.created_at.desc()))
         if not checkpoint:
@@ -107,6 +136,14 @@ class _CoreMixin:
 
 
     def patch_document(self, project_id: str, page_id: str, document: dict[str, Any], revision: int) -> dict[str, Any]:
+        """Replace one page document with optimistic revision checking.
+
+        Geometry is clamped to the 0-100 percentage space and every element
+        gets a stable id before a new version row is written.
+
+        Raises:
+            HTTPException: 409 when the caller's revision is stale.
+        """
         p = self.project(project_id); page = self.page(project_id, page_id)
         if revision != page.document_revision:
             raise HTTPException(409, "页面已被更新，请刷新后重试")
@@ -150,6 +187,12 @@ class _CoreMixin:
 
 
     def restore_document(self, project_id: str, page_id: str, revision: int, direction: str) -> dict[str, Any]:
+        """Undo or redo the page document version chain.
+
+        Raises:
+            HTTPException: 409 when the revision is stale or no target version
+                exists.
+        """
         p = self.project(project_id); page = self.page(project_id, page_id)
         if revision != page.document_revision:
             raise HTTPException(409, "页面已被更新，请刷新后重试")
@@ -170,5 +213,6 @@ class _CoreMixin:
 
 
     def _event(self, p: PptProject, event_type: str, payload: dict[str, Any]) -> None:
+        """Append an agent event row for the SSE streams; the caller commits."""
         self.db.add(PptAgentEvent(project_id=p.id, event_type=event_type, payload_json=payload))
 

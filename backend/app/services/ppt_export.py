@@ -1,3 +1,10 @@
+"""Native PPTX export from saved page documents.
+
+Exports use python-pptx text, shape and image objects rather than SVG, so
+the file stays editable and needs no rasterizer.  Page coordinates are
+percentages of the 1280x720 logical canvas.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -10,6 +17,7 @@ from urllib.parse import unquote_to_bytes
 from fastapi import HTTPException
 
 
+# 16:9 slide size matching the 1280x720 canvas at 96 dpi.
 SLIDE_WIDTH_INCHES = 13.333
 SLIDE_HEIGHT_INCHES = 7.5
 
@@ -47,10 +55,12 @@ def _number(value: Any, fallback: float = 0) -> float:
 
 
 def _length(percent: Any, total: int) -> int:
+    """Convert an element percentage to slide units."""
     return int(max(0.0, min(100.0, _number(percent))) / 100 * total)
 
 
 def _geometry(element: dict[str, Any], prs) -> tuple[int, int, int, int]:
+    """Convert a percentage box to slide coordinates."""
     left = _length(element.get("x"), prs.slide_width)
     top = _length(element.get("y"), prs.slide_height)
     width = max(1, _length(element.get("w", 20), prs.slide_width))
@@ -59,6 +69,7 @@ def _geometry(element: dict[str, Any], prs) -> tuple[int, int, int, int]:
 
 
 def _element_text(element: dict[str, Any]) -> str:
+    """Return the text of an element, joining item lists."""
     text = element.get("text")
     if text is not None:
         return str(text)
@@ -74,6 +85,7 @@ def _first_value(element: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+# Element types exported as shapes instead of text.
 VISUAL_TYPES = {
     "shape", "rect", "rectangle", "rounded-rectangle", "rounded_rectangle",
     "roundrect", "card", "panel", "box", "bar", "divider", "line",
@@ -82,6 +94,7 @@ VISUAL_TYPES = {
 
 
 def _is_visual_element(element: dict[str, Any]) -> bool:
+    """Return whether an element should export as a shape."""
     element_type = str(element.get("type") or "").strip().lower().replace(" ", "-")
     if element_type in VISUAL_TYPES:
         return True
@@ -94,6 +107,7 @@ def _is_visual_element(element: dict[str, Any]) -> bool:
 
 
 def _font_is_bold(value: Any, element_type: str) -> bool:
+    """Resolve the bold flag from a weight number or a name."""
     if value is None:
         return element_type == "title"
     if isinstance(value, (int, float)):
@@ -102,6 +116,7 @@ def _font_is_bold(value: Any, element_type: str) -> bool:
 
 
 def _alignment(value: Any, PP_ALIGN):
+    """Map an editor alignment name to a python-pptx constant."""
     return {"center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}.get(str(value or "left").lower(), PP_ALIGN.LEFT)
 
 
@@ -119,6 +134,7 @@ def _data_image(source: str) -> BytesIO | Path | None:
 
 
 def _fallback_elements(page, colors: dict[str, str]) -> list[dict[str, Any]]:
+    """Build title and bullet elements when no document is saved."""
     elements: list[dict[str, Any]] = [{
         "id": "title", "type": "title", "x": 7, "y": 8, "w": 86, "h": 14,
         "text": page.title or "未命名页面", "font_size": 30, "color": colors.get("title"),
@@ -132,11 +148,13 @@ def _fallback_elements(page, colors: dict[str, str]) -> list[dict[str, Any]]:
 
 
 def _page_document(page) -> dict[str, Any]:
+    """Return the saved design or draft document of a page."""
     document = getattr(page, "design_document_json", None) or getattr(page, "draft_document_json", None) or {}
     return document if isinstance(document, dict) else {}
 
 
 def _page_colors(theme: dict[str, Any], document: dict[str, Any]) -> dict[str, str]:
+    """Resolve page colours, letting the page theme override the deck."""
     colors = dict(theme.get("colors") or {})
     document_theme = document.get("theme")
     if isinstance(document_theme, dict):
@@ -150,6 +168,7 @@ def _page_colors(theme: dict[str, Any], document: dict[str, Any]) -> dict[str, s
 
 
 def _add_text(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBColor, Pt, PP_ALIGN) -> None:
+    """Add one text box with per-run styling and paragraph options."""
     text = _element_text(element)
     if not text:
         return
@@ -207,6 +226,7 @@ def _add_text(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBCo
 
 
 def _add_shape(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBColor, MSO_SHAPE, Pt) -> None:
+    """Add one shape with fill, stroke and transparency."""
     left, top, width, height = _geometry(element, prs)
     element_type = str(element.get("type") or "shape").strip().lower().replace(" ", "-")
     shape_hint = str(element.get("shape") or "").strip().lower().replace("_", "-")
@@ -245,6 +265,7 @@ def _add_shape(slide, element: dict[str, Any], colors: dict[str, str], prs, RGBC
 
 
 def _add_image(slide, element: dict[str, Any], prs) -> None:
+    """Add one embedded image, skipping malformed sources."""
     source = _data_image(str(element.get("asset_path") or element.get("src") or ""))
     if source is None:
         return
