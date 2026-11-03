@@ -1,9 +1,12 @@
+"""LangGraph decision boundary for PPT assistant actions."""
+
 from __future__ import annotations
 
 from typing import Any, TypedDict
 
 
 class PptGraphState(TypedDict, total=False):
+    """State passed through the PPT routing graph."""
     project_id: str
     page_id: str | None
     action_type: str
@@ -19,6 +22,7 @@ class PptWorkflowGraph:
     """
 
     def __init__(self):
+        """Compile the graph, or fall back to the plain router without it."""
         self._graph = None
         try:
             from langgraph.graph import END, StateGraph
@@ -32,6 +36,7 @@ class PptWorkflowGraph:
 
     @staticmethod
     def _route(state: PptGraphState) -> PptGraphState:
+        """Build the routing decision for one action request."""
         action = state.get("action_type", "")
         allowed = {
             "page_generate_search_queries", "page_search_run", "page_search_refresh", "page_visual_research", "page_visual_plan",
@@ -42,6 +47,7 @@ class PptWorkflowGraph:
         return {**state, "decision": decision, "events": [{"event_type": "router.decision", "payload": decision}]}
 
     def invoke(self, state: PptGraphState) -> PptGraphState:
+        """Run the compiled graph, or the plain router when it is absent."""
         if self._graph is not None:
             return self._graph.invoke(state)
         return self._route(state)

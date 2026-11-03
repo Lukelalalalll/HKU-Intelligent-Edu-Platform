@@ -14,13 +14,17 @@ class JobManager:
         self.db = db
 
     def enqueue(self, kind: str, payload: tuple, idempotency_key: str) -> JobHandle:
+        """Stage one task in the outbox and publish it after commit."""
         return enqueue(self.db, kind, payload, idempotency_key)
 
     def cancel(self, job_id: str) -> bool:
+        """Cancel an outbox row that has not been published yet."""
         return cancel(self.db, job_id)
 
     def retry(self, job_id: str) -> JobHandle:
+        """Reset a failed row and publish it again."""
         return retry(self.db, job_id)
 
     def recover_stale_jobs(self) -> int:
+        """Release expired leases and republish eligible rows."""
         return recover_stale_jobs()

@@ -8,54 +8,64 @@ from app.jobs.celery_app import celery_app
 
 
 def process_file_processing_job(job_id: str):
+    """Process one queued file-processing job."""
     from app.services.file_processing import process_job
 
     return process_job(job_id)
 
 
 def ingest_courseware_material(material_id: str):
+    """Ingest one course material into the courseware index."""
     from app.services.courseware_rag.service import ingest_material
 
     return ingest_material(material_id)
 
 
 def run_ppt_generation(job_id: str, project_id: str, user_id: str):
+    """Run deck generation for one project."""
     from app.services.ppt_agent import _run_generation_job
 
     return _run_generation_job(job_id, project_id, user_id)
 
 
 def run_ppt_visual_research(job_id: str, project_id: str, user_id: str):
+    """Run visual research for one project."""
     from app.services.ppt_agent import _run_visual_research_job
 
     return _run_visual_research_job(job_id, project_id, user_id)
 
 
 def run_ppt_export(export_id: str, project_id: str, filename: str | None = None):
+    """Render one PPTX export."""
     from app.jobs.handlers import run_ppt_export as handler
 
     return handler(export_id, project_id, filename)
 
 def run_video_generation(job_id: str):
+    """Run the video pipeline for one job id."""
     from app.services.video_generation import run_video_job
     return run_video_job(job_id)
 
 def run_video_render(job_id: str):
     # Render re-enters the same job pipeline; the separate task name exists for
     # the dispatcher's kind mapping.
+    """Re-enter the video pipeline for the render stage."""
     return run_video_generation(job_id)
 
 def run_video_cleanup(job_id: str):
     # Reserved hook: no caller enqueues ``video_cleanup`` today, so the task
     # only acknowledges the id.
+    """Reserved cleanup hook; no caller enqueues it today."""
     return {"job_id": job_id, "status": "cleaned"}
 
 def run_video_provider_poll(job_id: str):
     # Polling resumes the pipeline for a job whose provider reported work.
+    """Re-enter the video pipeline to poll provider progress."""
     return run_video_generation(job_id)
 
 
 def republish_outbox():
+    """Republish outbox rows left pending by a broker outage."""
     from app.jobs.dispatcher import recover_outbox
 
     return recover_outbox()

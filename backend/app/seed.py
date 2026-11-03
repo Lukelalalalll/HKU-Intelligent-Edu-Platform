@@ -1,3 +1,5 @@
+"""Create demo accounts and course data for local development."""
+
 from sqlalchemy import select
 
 from app.core.security import hash_password
@@ -5,6 +7,7 @@ from app.db.session import Base, SessionLocal, engine
 from app.models import Assignment, Course, CourseChapter, CourseSchedule, Enrollment, User, UserRole
 
 def get_or_create_user(db, username: str, email: str, name: str, role: UserRole):
+    """Return the user by username, creating it with the demo password."""
     user = db.scalar(select(User).where(User.username == username))
     if not user:
         user = User(username=username, email=email, name=name, password_hash=hash_password("123456"), role=role)
@@ -13,6 +16,7 @@ def get_or_create_user(db, username: str, email: str, name: str, role: UserRole)
     return user
 
 def seed():
+    """Create demo users, courses, assignments and chapter shells."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         student = get_or_create_user(db, "demo_student", "demo_student@example.test", "Demo Student", UserRole.student)
